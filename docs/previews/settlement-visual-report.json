@@ -1,0 +1,480 @@
+{
+    "shots": [
+        {
+            "name": "settlement-success-1920x1080",
+            "width": 1920,
+            "height": 1080,
+            "scaleFactor": 1.0,
+            "pngBytes": 148511,
+            "slotCount": 12,
+            "ingredientIconCount": 5,
+            "newMarkerCount": 2,
+            "petIconPath": "Assets/Resources/UI/SettlementIcons/FlyingCompanion.png",
+            "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
+            "gainedText": "本局 +18",
+            "ownedText": "拥有 821",
+            "outcomeText": "",
+            "visibleHeaders": [
+                "新宠物",
+                "新菜谱",
+                "采集物"
+            ],
+            "headerInkPixels": 2657,
+            "foregroundFraction": 0.6365311741828919,
+            "quantizedColors": 827,
+            "rects": [
+                {
+                    "name": "Panel",
+                    "x": 189.99996948242188,
+                    "y": 59.999996185302737,
+                    "width": 1540.0,
+                    "height": 960.0
+                },
+                {
+                    "name": "Title",
+                    "x": 355.20001220703127,
+                    "y": 829.2000122070313,
+                    "width": 1080.0,
+                    "height": 62.99993896484375
+                },
+                {
+                    "name": "InventoryViewport",
+                    "x": 357.0,
+                    "y": 314.4000244140625,
+                    "width": 505.79998779296877,
+                    "height": 413.99993896484377
+                },
+                {
+                    "name": "DetailsViewport",
+                    "x": 956.3999633789063,
+                    "y": 422.4000244140625,
+                    "width": 586.7999877929688,
+                    "height": 360.0
+                },
+                {
+                    "name": "Statistics",
+                    "x": 956.3999633789063,
+                    "y": 287.4000244140625,
+                    "width": 586.7999877929688,
+                    "height": 118.79998779296875
+                },
+                {
+                    "name": "IngredientDelta",
+                    "x": 1343.39990234375,
+                    "y": 364.8000183105469,
+                    "width": 198.0,
+                    "height": 43.199981689453128
+                },
+                {
+                    "name": "Duration",
+                    "x": 1343.39990234375,
+                    "y": 325.20001220703127,
+                    "width": 198.0,
+                    "height": 43.20001220703125
+                },
+                {
+                    "name": "Kills",
+                    "x": 1343.39990234375,
+                    "y": 285.60003662109377,
+                    "width": 198.0,
+                    "height": 43.199981689453128
+                },
+                {
+                    "name": "Retry",
+                    "x": 969.0,
+                    "y": 178.5,
+                    "width": 279.0,
+                    "height": 63.0
+                },
+                {
+                    "name": "Home",
+                    "x": 1284.0,
+                    "y": 178.5,
+                    "width": 279.0,
+                    "height": 63.0
+                }
+            ]
+        },
+        {
+            "name": "settlement-success-1280x720",
+            "width": 1280,
+            "height": 720,
+            "scaleFactor": 0.6666666865348816,
+            "pngBytes": 94803,
+            "slotCount": 12,
+            "ingredientIconCount": 5,
+            "newMarkerCount": 2,
+            "petIconPath": "Assets/Resources/UI/SettlementIcons/FlyingCompanion.png",
+            "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
+            "gainedText": "本局 +18",
+            "ownedText": "拥有 821",
+            "outcomeText": "",
+            "visibleHeaders": [
+                "新宠物",
+                "新菜谱",
+                "采集物"
+            ],
+            "headerInkPixels": 1032,
+            "foregroundFraction": 0.637295126914978,
+            "quantizedColors": 698,
+            "rects": [
+                {
+                    "name": "Panel",
+                    "x": 126.66664123535156,
+                    "y": 39.999996185302737,
+                    "width": 1026.666748046875,
+                    "height": 640.0
+                },
+                {
+                    "name": "Title",
+                    "x": 236.8000030517578,
+                    "y": 552.7999877929688,
+                    "width": 720.0,
+                    "height": 42.0
+                },
+                {
+                    "name": "InventoryViewport",
+                    "x": 238.0,
+                    "y": 209.6000213623047,
+                    "width": 337.20001220703127,
+                    "height": 276.0
+                },
+                {
+                    "name": "DetailsViewport",
+                    "x": 637.5999755859375,
+                    "y": 281.6000061035156,
+                    "width": 391.199951171875,
+                    "height": 239.99996948242188
+                },
+                {
+                    "name": "Statistics",
+                    "x": 637.5999755859375,
+                    "y": 191.6000213623047,
+                    "width": 391.199951171875,
+                    "height": 79.19999694824219
+                },
+                {
+                    "name": "IngredientDelta",
+                    "x": 895.5999755859375,
+                    "y": 243.20001220703126,
+                    "width": 132.0,
+                    "height": 28.79998779296875
+                },
+                {
+                    "name": "Duration",
+                    "x": 895.5999755859375,
+                    "y": 216.80001831054688,
+                    "width": 132.0,
+                    "height": 28.79998779296875
+                },
+                {
+                    "name": "Kills",
+                    "x": 895.5999755859375,
+                    "y": 190.4000244140625,
+                    "width": 132.0,
+                    "height": 28.79998779296875
+                },
+                {
+                    "name": "Retry",
+                    "x": 646.0,
+                    "y": 119.0,
+                    "width": 186.0,
+                    "height": 42.0
+                },
+                {
+                    "name": "Home",
+                    "x": 856.0,
+                    "y": 119.0,
+                    "width": 186.0,
+                    "height": 42.0
+                }
+            ]
+        },
+        {
+            "name": "settlement-death-1024x768",
+            "width": 1024,
+            "height": 768,
+            "scaleFactor": 0.6158403158187866,
+            "pngBytes": 82517,
+            "slotCount": 12,
+            "ingredientIconCount": 2,
+            "newMarkerCount": 0,
+            "petIconPath": "",
+            "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
+            "gainedText": "本局 +11",
+            "ownedText": "拥有 821",
+            "outcomeText": "带出 2  ·  遗失 9",
+            "visibleHeaders": [
+                "采集物"
+            ],
+            "headerInkPixels": 292,
+            "foregroundFraction": 0.6361662149429321,
+            "quantizedColors": 650,
+            "rects": [
+                {
+                    "name": "Panel",
+                    "x": 37.803009033203128,
+                    "y": 88.39663696289063,
+                    "width": 948.39404296875,
+                    "height": 591.206787109375
+                },
+                {
+                    "name": "Title",
+                    "x": 139.53982543945313,
+                    "y": 562.1010131835938,
+                    "width": 665.107421875,
+                    "height": 38.79791259765625
+                },
+                {
+                    "name": "InventoryViewport",
+                    "x": 140.6483154296875,
+                    "y": 245.06643676757813,
+                    "width": 311.49200439453127,
+                    "height": 254.9578857421875
+                },
+                {
+                    "name": "DetailsViewport",
+                    "x": 509.782958984375,
+                    "y": 311.5771789550781,
+                    "width": 361.37506103515627,
+                    "height": 221.70254516601563
+                },
+                {
+                    "name": "Statistics",
+                    "x": 509.782958984375,
+                    "y": 228.43875122070313,
+                    "width": 361.37506103515627,
+                    "height": 73.16183471679688
+                },
+                {
+                    "name": "IngredientDelta",
+                    "x": 748.1131591796875,
+                    "y": 276.10479736328127,
+                    "width": 121.93634033203125,
+                    "height": 26.60430908203125
+                },
+                {
+                    "name": "Duration",
+                    "x": 748.1131591796875,
+                    "y": 251.71751403808595,
+                    "width": 121.93634033203125,
+                    "height": 26.604324340820314
+                },
+                {
+                    "name": "Kills",
+                    "x": 748.1131591796875,
+                    "y": 227.33023071289063,
+                    "width": 121.93634033203125,
+                    "height": 26.60430908203125
+                },
+                {
+                    "name": "Retry",
+                    "x": 517.5425415039063,
+                    "y": 161.37371826171876,
+                    "width": 171.8194580078125,
+                    "height": 38.79795837402344
+                },
+                {
+                    "name": "Home",
+                    "x": 711.5322265625,
+                    "y": 161.37371826171876,
+                    "width": 171.8194580078125,
+                    "height": 38.79795837402344
+                },
+                {
+                    "name": "Status",
+                    "x": 140.6483154296875,
+                    "y": 159.71095275878907,
+                    "width": 343.63885498046877,
+                    "height": 46.55754089355469
+                }
+            ]
+        },
+        {
+            "name": "settlement-large-numbers-1024x768",
+            "width": 1024,
+            "height": 768,
+            "scaleFactor": 0.6158403158187866,
+            "pngBytes": 87315,
+            "slotCount": 12,
+            "ingredientIconCount": 2,
+            "newMarkerCount": 2,
+            "petIconPath": "Assets/Resources/UI/SettlementIcons/FlyingCompanion.png",
+            "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
+            "gainedText": "本局 +2147483647",
+            "ownedText": "拥有 4294967294",
+            "outcomeText": "带出 214748365  ·  遗失 1932735282",
+            "visibleHeaders": [
+                "新宠物",
+                "新菜谱",
+                "采集物"
+            ],
+            "headerInkPixels": 885,
+            "foregroundFraction": 0.6361662149429321,
+            "quantizedColors": 682,
+            "rects": [
+                {
+                    "name": "Panel",
+                    "x": 37.803009033203128,
+                    "y": 88.39663696289063,
+                    "width": 948.39404296875,
+                    "height": 591.206787109375
+                },
+                {
+                    "name": "Title",
+                    "x": 139.53982543945313,
+                    "y": 562.1010131835938,
+                    "width": 665.107421875,
+                    "height": 38.79791259765625
+                },
+                {
+                    "name": "InventoryViewport",
+                    "x": 140.6483154296875,
+                    "y": 245.06643676757813,
+                    "width": 311.49200439453127,
+                    "height": 254.9578857421875
+                },
+                {
+                    "name": "DetailsViewport",
+                    "x": 509.782958984375,
+                    "y": 311.5771789550781,
+                    "width": 361.37506103515627,
+                    "height": 221.70254516601563
+                },
+                {
+                    "name": "Statistics",
+                    "x": 509.782958984375,
+                    "y": 228.43875122070313,
+                    "width": 361.37506103515627,
+                    "height": 73.16183471679688
+                },
+                {
+                    "name": "IngredientDelta",
+                    "x": 748.1131591796875,
+                    "y": 276.10479736328127,
+                    "width": 121.93634033203125,
+                    "height": 26.60430908203125
+                },
+                {
+                    "name": "Duration",
+                    "x": 748.1131591796875,
+                    "y": 251.71751403808595,
+                    "width": 121.93634033203125,
+                    "height": 26.604324340820314
+                },
+                {
+                    "name": "Kills",
+                    "x": 748.1131591796875,
+                    "y": 227.33023071289063,
+                    "width": 121.93634033203125,
+                    "height": 26.60430908203125
+                },
+                {
+                    "name": "Retry",
+                    "x": 517.5425415039063,
+                    "y": 161.37371826171876,
+                    "width": 171.8194580078125,
+                    "height": 38.79795837402344
+                },
+                {
+                    "name": "Home",
+                    "x": 711.5322265625,
+                    "y": 161.37371826171876,
+                    "width": 171.8194580078125,
+                    "height": 38.79795837402344
+                }
+            ]
+        },
+        {
+            "name": "settlement-single-empty-1280x720",
+            "width": 1280,
+            "height": 720,
+            "scaleFactor": 0.6666666865348816,
+            "pngBytes": 66517,
+            "slotCount": 1,
+            "ingredientIconCount": 0,
+            "newMarkerCount": 0,
+            "petIconPath": "",
+            "woodIconPath": "",
+            "gainedText": "",
+            "ownedText": "",
+            "outcomeText": "",
+            "visibleHeaders": [],
+            "headerInkPixels": 0,
+            "foregroundFraction": 0.6376293301582336,
+            "quantizedColors": 512,
+            "rects": [
+                {
+                    "name": "Panel",
+                    "x": 126.66664123535156,
+                    "y": 39.999996185302737,
+                    "width": 1026.666748046875,
+                    "height": 640.0
+                },
+                {
+                    "name": "Title",
+                    "x": 236.8000030517578,
+                    "y": 552.7999877929688,
+                    "width": 720.0,
+                    "height": 42.0
+                },
+                {
+                    "name": "InventoryViewport",
+                    "x": 238.0,
+                    "y": 209.6000213623047,
+                    "width": 337.20001220703127,
+                    "height": 276.0
+                },
+                {
+                    "name": "DetailsViewport",
+                    "x": 637.5999755859375,
+                    "y": 281.6000061035156,
+                    "width": 391.199951171875,
+                    "height": 239.99996948242188
+                },
+                {
+                    "name": "Statistics",
+                    "x": 637.5999755859375,
+                    "y": 191.6000213623047,
+                    "width": 391.199951171875,
+                    "height": 79.19999694824219
+                },
+                {
+                    "name": "IngredientDelta",
+                    "x": 895.5999755859375,
+                    "y": 243.20001220703126,
+                    "width": 132.0,
+                    "height": 28.79998779296875
+                },
+                {
+                    "name": "Duration",
+                    "x": 895.5999755859375,
+                    "y": 216.80001831054688,
+                    "width": 132.0,
+                    "height": 28.79998779296875
+                },
+                {
+                    "name": "Kills",
+                    "x": 895.5999755859375,
+                    "y": 190.4000244140625,
+                    "width": 132.0,
+                    "height": 28.79998779296875
+                },
+                {
+                    "name": "Retry",
+                    "x": 646.0,
+                    "y": 119.0,
+                    "width": 186.0,
+                    "height": 42.0
+                },
+                {
+                    "name": "Home",
+                    "x": 856.0,
+                    "y": 119.0,
+                    "width": 186.0,
+                    "height": 42.0
+                }
+            ]
+        }
+    ]
+}

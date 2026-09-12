@@ -40,6 +40,7 @@ public class InventoryItemUI : MonoBehaviour, IPointerClickHandler
 
     // 当前格子的数据
     private SlotData slotData = new SlotData();
+    private bool snapshotViewNeedsRefresh;
 
     /// <summary>多出来的那一格：仅展示 Lock 背景，不参与存物。</summary>
     private bool _isLockedPreviewSlot;
@@ -115,12 +116,42 @@ public class InventoryItemUI : MonoBehaviour, IPointerClickHandler
     }
     public void UpdateSlotCapacity(int newCapacity)
     {
-        if (newCapacity <= 0) return;
+        if (newCapacity < 0) return;
 
         slotData.maxCapacity = newCapacity;
         // 更新UI显示容量
         UpdateUI();
     }
+
+    public bool ApplySnapshot(InventorySlotSnapshot snapshot)
+    {
+        if (snapshot == null || _isLockedPreviewSlot ||
+            snapshot.Index != slotData.slotIndex || snapshot.Capacity != slotData.maxCapacity)
+            return false;
+
+        ApplySnapshotData(snapshot);
+        RefreshSnapshotView();
+        return true;
+    }
+
+    // The caller validates the complete inventory before applying any slot data.
+    internal void ApplySnapshotData(InventorySlotSnapshot snapshot)
+    {
+        bool changed = slotData.itemType != snapshot.ItemType ||
+            slotData.currentCount != snapshot.Count || slotData.isEmpty != snapshot.IsEmpty;
+        slotData.itemType = snapshot.ItemType;
+        slotData.currentCount = snapshot.Count;
+        slotData.isEmpty = snapshot.IsEmpty;
+        snapshotViewNeedsRefresh |= changed;
+    }
+
+    internal void RefreshSnapshotView()
+    {
+        if (!snapshotViewNeedsRefresh) return;
+        UpdateUI();
+        snapshotViewNeedsRefresh = false;
+    }
+
     // 添加物品到格子
     public bool AddItem(ResourceType itemType, int amount, out int addedAmount)
     {

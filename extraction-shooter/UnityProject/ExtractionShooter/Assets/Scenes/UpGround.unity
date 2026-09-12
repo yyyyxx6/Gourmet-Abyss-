@@ -64886,7 +64886,7 @@ MonoBehaviour:
   slotEntranceStartScale: 0.5
   slotLandingWobbleDuration: 0.4
   slotLandingWobbleScale: 1.5
-  showRunIngredientDebugUI: 1
+  showRunIngredientDebugUI: 0
 --- !u!114 &1066766774
 MonoBehaviour:
   m_ObjectHideFlags: 0

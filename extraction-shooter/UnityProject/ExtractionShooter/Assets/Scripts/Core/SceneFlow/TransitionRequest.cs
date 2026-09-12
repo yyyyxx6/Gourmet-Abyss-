@@ -6,14 +6,14 @@ namespace Game.Core.SceneFlow
     /// <summary>发光（Emission）过渡效果。</summary>
     public enum EmissionEffect { None, EnterLevel, ExitLevel }
 
-    /// <summary>本次转场对「本局食材背包」的处理。</summary>
+    /// <summary>本次转场对本局采集物的处理；占格食材始终保留。</summary>
     public enum RunBagAction
     {
         /// <summary>不动。</summary>
         None,
-        /// <summary>清空且不结算（进入新副本时）。</summary>
+        /// <summary>确认旧采集物已入库后，开始新的空采集记录。</summary>
         Clear,
-        /// <summary>结算进 GameValManager 后清空（正常带出时）。</summary>
+        /// <summary>提交采集物，未能入库的数量继续保留。</summary>
         CommitToGameVal
     }
 
@@ -107,11 +107,16 @@ namespace Game.Core.SceneFlow
 
         /// <summary>是否强制重新启用玩家的 TopDownController。</summary>
         public bool ReenablePlayerController;
+
+        /// <summary>由结算界面持有结束门禁；失败时保留界面与冻结的结果。</summary>
+        public bool FromSettlement;
+
+        /// <summary>旧场景完全卸载后才加载目标，保证同图重试产生新实例。</summary>
+        public bool WaitForUnloadBeforeLoad;
     }
 
     /// <summary>
-    /// 四条现有转场路径的预设。字段值照抄 LevelManager 当前实现，含尚未修复的缺陷（见各处 [现状] 注释）。
-    /// 接线时不要顺手改这些值，缺陷修复是独立一轮改动。
+    /// 现有转场与结算重试共用的预设，保留各自的视觉和 HUD 刷新时机。
     /// </summary>
     public static class TransitionPresets
     {
@@ -142,7 +147,7 @@ namespace Game.Core.SceneFlow
             RefreshMainCamera = true,
             ResetBattleValues = false,
             PlaySlotsEntranceAnimation = false,
-            ReenablePlayerController = false
+            ReenablePlayerController = true
         };
 
         /// <summary>
@@ -211,8 +216,7 @@ namespace Game.Core.SceneFlow
         /// 关卡之间平级切换。对应 <c>LevelManager.SwitchLevelProcess</c>。
         /// </summary>
         /// <remarks>
-        /// [现状] 不处理本局食材背包（既不清空也不结算）。<br/>
-        /// [现状] 不启停氧气消耗，靠上一次转场留下的状态延续。<br/>
+        /// 保留占格食材、提交上一局采集物，新关卡重新开始统计与饥饿消耗。<br/>
         /// [现状] 不改动地面主场景物体与餐厅位置（此时它们本就处于战斗态）。
         /// </remarks>
         public static TransitionRequest SwitchLevel(string fromLevel, string toLevel) => new TransitionRequest
@@ -225,8 +229,8 @@ namespace Game.Core.SceneFlow
             VehicleFadeInScene = toLevel,
             Saturation = SaturationDirection.ToUnsaturated,
             Emission = EmissionEffect.ExitLevel,
-            RunBag = RunBagAction.None,
-            Oxygen = OxygenAction.None,
+            RunBag = RunBagAction.CommitToGameVal,
+            Oxygen = OxygenAction.StartConsuming,
             Restaurant = RestaurantPose.Unchanged,
             HomeObjects = HomeSceneVisibility.Unchanged,
             HudTiming = HudRefreshTiming.AfterWorldSetup,
@@ -235,7 +239,19 @@ namespace Game.Core.SceneFlow
             RefreshMainCamera = true,
             ResetBattleValues = false,
             PlaySlotsEntranceAnimation = false,
-            ReenablePlayerController = false
+            ReenablePlayerController = true
         };
+
+        public static TransitionRequest RestartLevel(string levelName)
+        {
+            TransitionRequest request = SwitchLevel(levelName, levelName);
+            request.FromSettlement = true;
+            request.WaitForUnloadBeforeLoad = true;
+            request.HomeObjects = HomeSceneVisibility.Hide;
+            request.Restaurant = RestaurantPose.MoveAwayForBattle;
+            request.ExtraFrameBeforeFadeIn = true;
+            request.PlaySlotsEntranceAnimation = true;
+            return request;
+        }
     }
 }

@@ -413,6 +413,8 @@ public class SkillTreeInitializer : MonoBehaviour
             case 47: wsm.SetPrimaryReloadDuration(initialValue / (1f + value * level)); break;
             case 48: wsm.SetSecondaryReloadDuration(initialValue / (1f + value * level)); break;
             case 69: wsm.SetRestaurantDishQueueSlotCount(wsm.restaurantDishQueueSlotCount + (int)value); break;
+            // A value of 0.05 adds five percentage points per level to the configured base rate.
+            case 71: wsm.deathRetentionRate = Mathf.Clamp01(initialValue + value * level); break;
 
             // FlyingCompanion（数值来自 PetManager Awake 快照；statID 52–65）
             case 52:
@@ -516,6 +518,7 @@ public class SkillTreeInitializer : MonoBehaviour
             case 68: return wsm.primaryAOEEdgeMinDamageRatio;
             case 69: return wsm.restaurantDishQueueSlotCount;
             case 70: return wsm.restaurantCustomerPrefabCount;
+            case 71: return wsm.deathRetentionRate;
             default: return 0f;
         }
     }

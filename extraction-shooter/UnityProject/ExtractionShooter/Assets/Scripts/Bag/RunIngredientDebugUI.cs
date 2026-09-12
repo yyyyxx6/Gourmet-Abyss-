@@ -4,12 +4,13 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Temporary lightweight display for verifying the run-only ingredient bag.
+/// Development-only display for gathered resources. The legacy class name is retained.
 /// It is created at runtime and requires no scene or prefab configuration.
 /// </summary>
 public class RunIngredientDebugUI : MonoBehaviour
 {
     private InventoryManager inventory;
+    private GameValManager gameValues;
     private Text ingredientText;
 
     public static void EnsureExists(InventoryManager targetInventory)
@@ -41,7 +42,7 @@ public class RunIngredientDebugUI : MonoBehaviour
         scaler.matchWidthOrHeight = 0.5f;
         gameObject.AddComponent<GraphicRaycaster>();
 
-        GameObject panelObject = new GameObject("IngredientDebugPanel", typeof(RectTransform), typeof(Image));
+        GameObject panelObject = new GameObject("GatheredDebugPanel", typeof(RectTransform), typeof(Image));
         panelObject.transform.SetParent(transform, false);
 
         RectTransform panel = panelObject.GetComponent<RectTransform>();
@@ -49,8 +50,8 @@ public class RunIngredientDebugUI : MonoBehaviour
         panel.anchorMax = new Vector2(0.5f, 1f);
         panel.pivot = new Vector2(0.5f, 1f);
         panel.anchoredPosition = new Vector2(0f, -24f);
-        panel.sizeDelta = new Vector2(560f, 200f);
-        panelObject.GetComponent<Image>().color = new Color(0.38f, 0.03f, 0.03f, 0.94f);
+        panel.sizeDelta = new Vector2(560f, 260f);
+        panelObject.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.94f);
 
         GameObject textObject = new GameObject("IngredientDebugText", typeof(RectTransform), typeof(Text), typeof(Outline));
         textObject.transform.SetParent(panelObject.transform, false);
@@ -68,8 +69,8 @@ public class RunIngredientDebugUI : MonoBehaviour
         if (builtinFont == null)
             builtinFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
         ingredientText.font = builtinFont;
-        ingredientText.fontSize = 28;
-        ingredientText.color = new Color(1f, 0.92f, 0.2f, 1f);
+        ingredientText.fontSize = 22;
+        ingredientText.color = Color.white;
         ingredientText.alignment = TextAnchor.UpperCenter;
         ingredientText.horizontalOverflow = HorizontalWrapMode.Wrap;
         ingredientText.verticalOverflow = VerticalWrapMode.Truncate;
@@ -80,23 +81,28 @@ public class RunIngredientDebugUI : MonoBehaviour
 
     private void Bind(InventoryManager targetInventory)
     {
-        if (inventory == targetInventory) return;
-
         if (inventory != null)
-            inventory.OnRunIngredientChanged -= OnIngredientChanged;
+            inventory.OnRunGatheredChanged -= OnGatheredChanged;
+        if (gameValues != null)
+            gameValues.OnResourceChanged.RemoveListener(OnGatheredChanged);
 
         inventory = targetInventory;
-        inventory.OnRunIngredientChanged += OnIngredientChanged;
+        inventory.OnRunGatheredChanged += OnGatheredChanged;
+        gameValues = GameValManager.Instance;
+        if (gameValues != null)
+            gameValues.OnResourceChanged.AddListener(OnGatheredChanged);
         Refresh();
     }
 
     private void OnDestroy()
     {
         if (inventory != null)
-            inventory.OnRunIngredientChanged -= OnIngredientChanged;
+            inventory.OnRunGatheredChanged -= OnGatheredChanged;
+        if (gameValues != null)
+            gameValues.OnResourceChanged.RemoveListener(OnGatheredChanged);
     }
 
-    private void OnIngredientChanged(ResourceType type, int oldCount, int newCount)
+    private void OnGatheredChanged(ResourceType type, int oldCount, int newCount)
     {
         Refresh();
     }
@@ -105,26 +111,37 @@ public class RunIngredientDebugUI : MonoBehaviour
     {
         if (ingredientText == null) return;
 
-        StringBuilder builder = new StringBuilder("RUN INGREDIENTS (NO SLOTS)\n");
+        StringBuilder builder = new StringBuilder("GATHERED RESOURCES\n");
         if (inventory == null)
         {
             builder.Append("InventoryManager NOT FOUND");
         }
         else
         {
-            var counts = inventory.GetAllRunIngredientCounts()
-                .Where(pair => pair.Value > 0)
-                .OrderBy(pair => pair.Key.ToString())
+            var counts = inventory.GetRunGatheredCounts();
+            var storedTypes = gameValues == null
+                ? Enumerable.Empty<ResourceType>()
+                : gameValues.GetAllResources()
+                    .Where(resource => resource.count > 0 && ResourceStorageRules.IsGathered(resource.type))
+                    .Select(resource => resource.type);
+            var types = counts.Keys.Concat(storedTypes)
+                .Distinct()
+                .OrderBy(type => type)
                 .ToList();
 
-            if (counts.Count == 0)
+            if (types.Count == 0)
             {
                 builder.Append("EMPTY");
             }
             else
             {
-                foreach (var pair in counts)
-                    builder.Append(pair.Key).Append(": ").Append(pair.Value).Append('\n');
+                foreach (ResourceType type in types)
+                {
+                    int currentRun = inventory.GetRunGatheredCount(type);
+                    int permanent = gameValues == null ? 0 : gameValues.GetResourceCount(type);
+                    builder.Append(type).Append("  RUN ").Append(currentRun)
+                        .Append("  OWNED ").Append(permanent).Append('\n');
+                }
             }
         }
 

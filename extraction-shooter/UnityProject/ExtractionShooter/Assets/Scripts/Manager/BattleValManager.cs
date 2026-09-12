@@ -274,6 +274,7 @@ public class BattleValManager : PersistentMonoSingleton<BattleValManager>
     /// </summary>
     public void DamageOxygen(float amount)
     {
+        if (PlayerStateManager.instance != null && PlayerStateManager.instance.currentState == PlayerState.Settlement) return;
         if (amount <= 0f) return;
 
         float before = oxygenCurrent;

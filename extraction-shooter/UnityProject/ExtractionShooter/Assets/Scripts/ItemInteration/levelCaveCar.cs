@@ -37,7 +37,8 @@ public class levelCaveCar : MonoSingleton<levelCaveCar>
     
     private void Update()
     {
-        if (isPlayerInTrigger && canUse && Input.GetKeyDown(KeyCode.E))
+        if (isPlayerInTrigger && canUse && Input.GetKeyDown(KeyCode.E) &&
+            PlayerStateManager.instance != null && PlayerStateManager.instance.currentState == PlayerState.Battle)
         {
             PlayPulse();
             AudioManager.Instance.PlayAudio("3");
@@ -49,21 +50,9 @@ public class levelCaveCar : MonoSingleton<levelCaveCar>
     {
         if (LevelManager.instance == null || LevelManager.instance.IsTransitioning())
             return;
-
-        SpawnReturnToHomeVfx();
-            
-        LevelManager.instance.FromLevelToHome(levelName);
-        
+        if (RunSessionManager.Instance == null || !RunSessionManager.Instance.TryEndRun(RunEndReason.Extracted))
+            return;
         canUse = false;
-        if (HomeCavecar.homeCavecar != null)
-        {
-            HomeCavecar.homeCavecar.canUse = true;
-        }
-        
-        if (player != null)
-        {
-            player.GetComponent<TopDownController>().enabled = false;
-        }
     }
 
     private void SpawnReturnToHomeVfx()

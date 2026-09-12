@@ -8,7 +8,8 @@ public enum PlayerState
 {
     UpGround,
     UI,
-    Battle
+    Battle,
+    Settlement
 }
 
 public class PlayerStateManager : MonoBehaviour
@@ -31,6 +32,7 @@ public class PlayerStateManager : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        if (currentState == PlayerState.Settlement) return;
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             AudioManager.Instance.PlayAudio("3");

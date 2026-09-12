@@ -6,41 +6,6 @@ using Game.Core;
 using UnityEngine;
 using UnityEngine.Events;
 
-public enum ResourceType
-{
-    Money,
-    watermelonJ,
-    orangeJ,
-    tomatoJ,
-    mushroom,
-    LootMushroom,
-    LootChickenLeg,
-    LootEggSmall,
-    LootEggBig,
-    LootTomato,
-    LootFish,
-    LootCrabStick,
-    LootChicken,
-    LootSnailMeat,
-    LootOnion,
-    LootPear,
-    LootPineapple,
-    LootRadish,
-    LootSweetPepper,
-    LootWatermelon,
-    LootPumkin,
-    None,
-    Furniture_Clock,
-    Furniture_Chair,
-    Loot_RatMeat,
-    Loot_Paste
-}
-public enum ResourceKind
-{
-    Food,
-    Others,
-    Furniture
-}
 [System.Serializable]
 public class ResourceItem
 {

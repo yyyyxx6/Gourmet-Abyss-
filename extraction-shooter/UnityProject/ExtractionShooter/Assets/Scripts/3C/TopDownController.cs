@@ -506,6 +506,7 @@ public class TopDownController : MonoBehaviour
     }
     public void Die()
     {
+        if (RunSessionManager.Instance != null && RunSessionManager.Instance.IsEndingRun) return;
         if (isDead) return; // 防止重复调用
         isDead = true;
 
@@ -529,14 +530,28 @@ public class TopDownController : MonoBehaviour
 
     private void OnPlayerDead()
     {
-        Debug.Log("玩家死亡，执行额外逻辑");
-        InventoryManager.instance.ClearBackpackByPercentage(1);
-        InventoryManager.instance.ClearRunIngredients();
-        DropItemsOnDeath();
-        Invoke("TOHome", 1f);
+        if (RunSessionManager.Instance == null || !RunSessionManager.Instance.TryEndRun(RunEndReason.Death))
+            Debug.LogError("The player died but the run settlement could not be opened.");
+    }
 
-        // 在这里执行你的其他逻辑，比如：
-        // GameManager.Instance.GameOver();
+    public void StopForRunEnd()
+    {
+        moveInput = Vector3.zero;
+        if (rb != null) rb.velocity = Vector3.zero;
+        if (primaryWeapon != null) primaryWeapon.SetShooting(false);
+        if (secondaryWeapon != null) secondaryWeapon.SetShooting(false);
+        enabled = false;
+    }
+
+    public void ResumeAfterRun()
+    {
+        CancelInvoke("TOHome");
+        isDead = false;
+        canPlayerMove = true;
+        moveInput = Vector3.zero;
+        if (rb != null) rb.velocity = Vector3.zero;
+        if (animator != null) animator.ResetTrigger("Dead");
+        enabled = true;
     }
     public void DropItemsOnDeath()
     {
@@ -630,8 +645,7 @@ public class TopDownController : MonoBehaviour
     }
     public void TOHome()
     {
-        // 关卡卸载后该单例为空（已在地面），此时不应再触发返回。
-        levelCaveCar.instance?.ToHome();
+        RunSessionManager.Instance?.TryEndRun(isDead ? RunEndReason.Death : RunEndReason.Extracted);
     }
 
     // 初始化足迹粒子效果
@@ -651,7 +665,7 @@ public class TopDownController : MonoBehaviour
 
     void Update()
     {
-        if (isDead) return; // 角色死亡后不再执行输入、战斗等逻辑
+        if (isDead || IsSettlementBlockingInput()) return;
         // 0. 检查战斗状态切换
         CheckCombatToggle();
 
@@ -690,13 +704,19 @@ public class TopDownController : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (isDead) return; // 角色死亡后不再执行输入、战斗等逻辑
+        if (isDead || IsSettlementBlockingInput()) return;
         // 物理移动和旋转建议在 FixedUpdate 中进行
         Move();
         Turn();
 
         // 更新粒子效果
         UpdateParticleEffects();
+    }
+
+    private static bool IsSettlementBlockingInput()
+    {
+        return (PlayerStateManager.instance != null && PlayerStateManager.instance.currentState == PlayerState.Settlement) ||
+            (RunSessionManager.Instance != null && RunSessionManager.Instance.IsEndingRun);
     }
 
     #region --- 足迹粒子效果控制 ---

@@ -134,6 +134,8 @@ public class WeaponStatsManager : PersistentMonoSingleton<WeaponStatsManager>
     [Header("背包数值")]
     public int inventorySlotCount = 4;        // 背包插槽个数
     public int inventorySlotCapacity = 4;    // 背包每个插槽的容量
+    [Tooltip("死亡时保留的资源比例；statID 71，0.1 表示保留 10%，技能加成为百分点。")]
+    [Range(0f, 1f)] public float deathRetentionRate = 0.1f;
     
     [Header("氧气与弹药数值")]
     public float oxygenMax = 100f;                // 氧气总量
@@ -635,7 +637,9 @@ public class WeaponStatsManager : PersistentMonoSingleton<WeaponStatsManager>
             var entry = petStateList[i];
             if (entry == null) continue;
             if (entry.petType != petType) continue;
+            bool newlyEnabled = enabled && !entry.isEnabled;
             entry.isEnabled = enabled;
+            if (newlyEnabled) RunSessionManager.Instance?.RecordPetUnlocked(petType);
             return;
         }
 
@@ -644,5 +648,6 @@ public class WeaponStatsManager : PersistentMonoSingleton<WeaponStatsManager>
             petType = petType,
             isEnabled = enabled
         });
+        if (enabled) RunSessionManager.Instance?.RecordPetUnlocked(petType);
     }
 }
