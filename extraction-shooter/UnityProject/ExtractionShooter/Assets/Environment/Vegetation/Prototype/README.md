@@ -1,26 +1,20 @@
-# 植被打样目录
+# 2D 树草图片模板
 
-这个目录给关卡和美术用于快速铺设树、草、灌木。预制体均以“可复制、可替换材质、可批量摆放”为目标。
+这是 SpriteRenderer 图片预制体。根节点只负责摆放，Image 只负责显示图片；不含 3D 模型、碰撞体或运行脚本。
 
-## 目录约定
+## 美术怎么用
 
-- `Prefabs/Vegetation_Single_Grass.prefab`：单株草模板，适合散点摆放。
-- `Prefabs/Vegetation_Single_Tree.prefab`：单株树模板，适合做远景/中景基准。
-- `Prefabs/Vegetation_Cluster_Sample.prefab`：树+草组合打样，可复制成片后整体替换子预制体。
-- `Docs/Vegetation_Art_Handoff.md`：美术替换和批量铺设规则。
+1. 在 Project 中复制 `Prefabs/Vegetation_Single_Tree` 或 `Vegetation_Single_Grass`，重命名为新植物。
+2. 打开复制的预制体，把新 Sprite 拖到 `Image > SpriteRenderer > Sprite`。
+3. 图片默认使用原像素尺寸 / PPU。根节点和 Image 的 Scale 都从 `(1,1,1)` 开始，保留原图比例。换图不强制适配旧宽度。
+4. 拖入场景，自己摆位置、层次和布局。`Sorting Layer / Order in Layer` 控制图片遮挡关系。
 
-## 替换方式
+图片文件仍用透明 PNG，不用改成 JPG、UI Image 或材质球。Unity Import Settings 选 `Sprite (2D and UI)`、Single；示例 PPU=100。像素风图片使用 Point、关闭 Mipmap 和压缩，Max Size 不小于原图尺寸。示例保留居中轴心，换图后位置由美术调整。
 
-1. 复制目标预制体并重命名，例如 `Tree_Pine_A_01`、`Grass_Short_B_01`。
-2. 打开复制后的预制体，保留根节点 Transform、碰撞体和层级结构。
-3. 只替换 MeshRenderer/材质中的贴图或材质；同一批次尽量共用材质，便于合批。
-4. 树按远近准备 LOD（近景完整模型，中景简化，远景 Billboard）；草优先使用低面数交叉片。
-5. 批量铺设时使用随机 Y 旋转、0.85~1.15 随机缩放，避免明显重复。
+## 目录
 
-## 当前参考资源
+- `Textures/Tree.png`、`Grass.png`：来自本项目 `Assets/NewVersion/map/地牢第一关卡素材1/树1.png` 和 `绿草1.png` 的原像素副本；原资源没有被改写。
+- `Prefabs/Vegetation_Single_Tree.prefab`、`Vegetation_Single_Grass.prefab`：普通 XY 平面 2D 图片模板。
+- `Prefabs/Vegetation_Cluster_Sample.prefab`：一棵树和两丛草的简单组合，保留对子预制体的引用。只是打样，不会自动铺设或修改现有场景。
 
-- 项目现用草：`Assets/Prefabas/SceneItem/Grass.prefab`、`Grass 1.prefab`
-- 沙漠环境树：`Assets/ImportAsset/ZerinLabs_enviroKit_RetroDesert/Prefabs/retroDesert_props/deco_desert_treeDead_A.prefab`
-- 沙漠环境草：`.../deco_desert_grass.prefab`、`deco_desert_grassDry.prefab`
-
-这里的模板是“引用原始预制体”的包装层，不复制原始资源，方便后续统一替换和回滚。
+大量手工铺设可复制单株或组合。默认不要对立起的 2D 图片做随机 Y 轴旋转，否则会侧向镜头；左右变化可使用 SpriteRenderer 的 Flip X。不同地块/区域的图片排序由美术安排，需要自动遮挡排序时再接入项目的排序组件。
