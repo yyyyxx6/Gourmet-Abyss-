@@ -26,13 +26,14 @@ namespace Game.Modules.Editor
             var item = new GameObject(sprite.name).AddComponent<PlacementItem>();
             item.standard = standard; item.xzGround = xz;
             item.surface = ground ? PlacementItem.Surface.Ground : PlacementItem.Surface.Artwork;
-            item.contact = Child(item.transform, "Contact");
+            item.contact = Child(item.transform, "ContactRoot");
             item.visualRoot = Child(item.transform, "VisualRoot");
             item.art = Child(item.visualRoot, "Art").gameObject.AddComponent<SpriteRenderer>();
             item.art.sprite = sprite;
-            item.physicsRoot = Child(item.transform, "Physics");
-            item.anchorsRoot = Child(item.transform, "Anchors");
+            item.physicsRoot = Child(item.transform, "PhysicsRoot");
+            item.anchorsRoot = Child(item.transform, "AnchorsRoot");
             item.sorter = item.art.gameObject.AddComponent<PlanarSprite>();
+            item.sorter.useWorldAxesWhenUnbound = true;
             item.width = width; item.groundDepth = depth;
             item.spriteContact = ground ? new Vector2(.5f, .5f) : new Vector2(.5f, 0);
             item.footprint = new Vector2(width, ground ? depth : Mathf.Max(.25f, width * .5f));
@@ -61,17 +62,25 @@ namespace Game.Modules.Editor
                 "物件根节点不能任意倾斜；立起图片用方向变体，地块仅能在地面内旋转");
             Check(Vector3.Distance(item.transform.lossyScale, Vector3.one) < .0001f, "父节点缩放破坏世界尺寸，请移出缩放组");
             var world = item.GetComponentInParent<ModuleWorld>();
-            if (item.surface == PlacementItem.Surface.Artwork)
+            var facing = item.visualRoot.GetComponent<CameraFacingVisual>();
+            var nestedFacing = item.visualRoot.GetComponentsInChildren<CameraFacingVisual>(true)
+                .Where(c => c.transform != item.visualRoot).ToArray();
+            Check(nestedFacing.Length == 0, "跟随镜头组件只能挂在 VisualRoot，不能放到 Art 或逻辑子节点");
+            if (item.surface == PlacementItem.Surface.Artwork && facing == null)
             {
                 var expected = world != null && world.view != null ? world.view.Pose(Vector2.zero).Rotation : item.standard.ArtworkRotation(item.xzGround);
                 Check(Quaternion.Angle(item.visualRoot.rotation, expected) < .01f, "父级旋转/坐标体系与模块镜头不一致");
             }
+            if (facing != null)
+                Check(Quaternion.Angle(item.visualRoot.localRotation, Quaternion.identity) < .01f,
+                    "跟随镜头物件的 VisualRoot 必须保持二维编辑平面");
             var frame = item.sorter.frame != null ? item.sorter.frame : world != null && world.view != null ? world.view.frame : null;
             float sortingDepth = frame != null ? Vector3.Dot(item.contact.position-frame.position,frame.up)
                 : Vector3.Dot(item.contact.position,item.xzGround?Vector3.forward:Vector3.up);
             Check(Mathf.Abs(-sortingDepth*100f+item.sorter.orderOffset) < (frame!=null?900:31000),
                 "超出当前排序分区，请由程序设置新的局部排序区域，不要继续扩大同一区域");
-            Check(Quaternion.Angle(item.visualRoot.localRotation, item.ExpectedVisualRotation) < .01f, "视觉倾角与镜头规范不一致，执行应用图片配置");
+            if (facing == null)
+                Check(Quaternion.Angle(item.visualRoot.localRotation, item.ExpectedVisualRotation) < .01f, "视觉倾角与镜头规范不一致，执行应用图片配置");
             Check(Vector3.Distance(item.visualRoot.localScale, Vector3.one) < .0001f, "VisualRoot 缩放须为 1，尺寸放在 Art 层");
             Check(item.width > 0 && item.groundDepth > 0 && item.footprint.x > 0 && item.footprint.y > 0, "尺寸/占地必须大于 0");
             Check(item.spriteContact.x >= 0 && item.spriteContact.x <= 1 && item.spriteContact.y >= 0 && item.spriteContact.y <= 1, "图片接地点须在 0..1 范围内");
@@ -91,7 +100,6 @@ namespace Game.Modules.Editor
                 item.visualRoot.GetComponentsInChildren<Collider2D>(true).Length == 0 &&
                 item.visualRoot.GetComponentsInChildren<Rigidbody>(true).Length == 0 &&
                 item.visualRoot.GetComponentsInChildren<Rigidbody2D>(true).Length == 0, "视觉分支不能承载碰撞/刚体");
-            Check(item.visualRoot.GetComponentsInChildren<CameraFacingVisual>(true).Length == 0, "固定图片模板不可再叠加动态朝向组件");
             return errors;
         }
 
@@ -176,7 +184,7 @@ namespace Game.Modules.Editor
                 if (GUILayout.Button("应用图片配置（不动逻辑/碰撞）")) PlacementTools.ApplyWithUndo(item);
                 if (GUILayout.Button("使用原图尺寸（Art 缩放恢复为 1）")) PlacementTools.UseNativeSize(item);
             }
-            EditorGUILayout.LabelField("程序预设", item.surface + " / " + (item.xzGround ? "XZ" : "XY"));
+            EditorGUILayout.LabelField("程序预设", item.surface + " / " + (item.xzGround ? "地面平面" : "模块平面"));
             EditorGUILayout.ObjectField("共享镜头规范", item.standard, typeof(WorldViewStandard), false);
             foreach (var error in PlacementTools.Validate(item)) EditorGUILayout.HelpBox(error, MessageType.Error);
             if (GUILayout.Button("打开固定镜头预览")) PlacementPreviewWindow.Open(item.gameObject);
@@ -208,11 +216,11 @@ namespace Game.Modules.Editor
         public static void Open() => GetWindow<PlacementAuthoringWindow>("物件摆放").Show();
         private void OnGUI()
         {
-            EditorGUILayout.HelpBox("选择场景父节点后创建；餐厅用 XY，战斗用 XZ。模板不自动新增经营席位或业务。", MessageType.Info);
+            EditorGUILayout.HelpBox("方向由镜头规范和预制配置统一处理；普通美术不需要区分 XY/XZ。模板不自动新增经营席位或业务。", MessageType.Info);
             template = (GameObject)EditorGUILayout.ObjectField("已有预制体", template, typeof(GameObject), false);
             sprite = (Sprite)EditorGUILayout.ObjectField("新图片", sprite, typeof(Sprite), false);
             ground = EditorGUILayout.Toggle("贴地素材", ground);
-            xz = EditorGUILayout.Toggle("XZ 地面（战斗）", xz);
+            xz = EditorGUILayout.Toggle("地面玩法平面", xz);
             nativeSize = EditorGUILayout.Toggle("新图片保持原图尺寸", nativeSize);
             using (new EditorGUI.DisabledScope(nativeSize || template != null))
             {

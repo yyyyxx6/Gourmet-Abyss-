@@ -12,9 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4f1ceec42b18dce45968d670fac048b8, type: 3}
   m_Name: RestaurantPerspective
   m_EditorClassIdentifier: 
-  tiltFromNormal: 32
+  viewStandard: {fileID: 11400000, guid: 00158273e388ce944b361f936d91377e, type: 2}
+  tiltFromNormal: 45
   fieldOfView: 40
-  distance: 31
+  distance: 40
   panLimit: 1.5
   dragSensitivity: 1
   priority: 60

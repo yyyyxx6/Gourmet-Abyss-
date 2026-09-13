@@ -24,7 +24,11 @@ namespace Game.Modules.Editor
         static bool autoRun;
         static double nextTime;
         static readonly List<string> results=new List<string>();
+        static PlanarSprite[] placedSprites;
+        static Quaternion[] placedRotations;
+        static Vector3[] placedScales;
         public static string Status {get;private set;}="Not started";
+        public static void StopAndRestore() { Finish("Stopped"); }
 
         [MenuItem("Tools/Modules/Restaurant Acceptance")]
         public static void ShowWindow(){GetWindow<ModuleAcceptanceWindow>("餐厅验收").Show();}
@@ -49,6 +53,9 @@ namespace Game.Modules.Editor
             adapter=Object.FindObjectOfType<RestaurantModuleAdapter>();director=CameraService.Active;player=Object.FindObjectOfType<TopDownController>();
             if(adapter==null||director==null||player==null||adapter.entry.IsEntered)throw new InvalidOperationException("需在小镇、餐厅外开始。");
             ModuleTools.ValidateDefinition(adapter.pair.definition);
+            placedSprites=adapter.pair.world.GetComponentsInChildren<PlanarSprite>(true);
+            placedRotations=placedSprites.Select(s=>s.transform.localRotation).ToArray();
+            placedScales=placedSprites.Select(s=>s.transform.localScale).ToArray();
             requestCount=director.RequestCount;originalNear=director.Camera.nearClipPlane;originalPosition=player.transform.position;originalMovement=player.canPlayerMove;
             results.Clear();step=0;autoRun=automatic;Status="Running";
             EditorApplication.update-=Tick;EditorApplication.update+=Tick;
@@ -74,11 +81,16 @@ namespace Game.Modules.Editor
         {
             try
             {
+                Check(placedSprites.Length>0 && placedSprites.Select((s,i)=>s!=null &&
+                    Quaternion.Angle(s.transform.localRotation,placedRotations[i])<.001f &&
+                    Vector3.Distance(s.transform.localScale,placedScales[i])<.00001f).All(x=>x),
+                    "阶段 "+step+"：全部素材保持摆放角度和缩放，不跟随镜头旋转");
                 switch(step)
                 {
                     case 0:
                         Check(adapter.entry.IsEntered&&adapter.pair.IsOpen&&!director.Camera.orthographic&&director.Camera.nearClipPlane>0,"餐厅透视已生效，近裁剪面合法");
                         Check(adapter.pair.world.transform.Find("VisualRoot").Cast<Transform>().Count(t=>t.name.StartsWith("TableSet"))==6,"六组桌椅存在");
+                        Check(true,ModuleSupplementalChecks.CheckArtworkProjection(director.Camera,placedSprites));
                         Check(adapter.restaurant.allDishQueueSlots.All(s=>s.transform.IsChildOf(adapter.pair.hud.transform)),"原烹饪队列对象保持引用并挂在新 HUD 下");
                         var debug=Object.FindObjectOfType<RunIngredientDebugUI>(true);
                         Check(debug==null||!debug.GetComponent<Canvas>().enabled,"餐厅不叠加旧食材调试界面");
@@ -87,10 +99,12 @@ namespace Game.Modules.Editor
                         if(autoRun)director.InputRouter.SetDebugOverride(new CameraInputFrame{PanHeld=true,PointerPositionPixels=new Vector2(Screen.width*.5f,Screen.height*.5f),PointerDeltaPixels=new Vector2(100,0)});
                         break;
                     case 1:
+                        Check(true,ModuleSupplementalChecks.CheckArtworkProjection(director.Camera,placedSprites));
                         Check(adapter.pair.world.view.PanOffset.magnitude<=adapter.pair.world.view.profile.panLimit+.001f&&adapter.pair.world.view.PanOffset.magnitude>.01f,"拖拽发生且受配置上限约束");
                         panBeforeUI=adapter.pair.world.view.PanOffset;
                         if(autoRun)director.InputRouter.SetDebugOverride(new CameraInputFrame{PanHeld=true,PointerBlockedByUi=true,PointerPositionPixels=Vector2.one*100,PointerDeltaPixels=Vector2.one*100});break;
                     case 2:
+                        Check(true,ModuleSupplementalChecks.CheckArtworkProjection(director.Camera,placedSprites));
                         Check(Vector2.Distance(panBeforeUI,adapter.pair.world.view.PanOffset)<.001f,"UI 拦截拖拽");director.InputRouter.ClearDebugOverride();
                         ModuleUIProbe.Click(adapter.pair.hud.GetAction("recipes").gameObject);
                         ScreenCapture.CaptureScreenshot("Library/ModuleAcceptance/04-recipes.png");break;

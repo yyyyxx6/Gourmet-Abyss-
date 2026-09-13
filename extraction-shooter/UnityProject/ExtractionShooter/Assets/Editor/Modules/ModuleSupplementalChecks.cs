@@ -13,6 +13,26 @@ namespace Game.Modules.Editor
     {
         public static string FlightStatus { get; private set; } = "Not started";
 
+        public static string CheckArtworkProjection(Camera camera, PlanarSprite[] sprites)
+        {
+            int count=0;
+            foreach(var placement in sprites.Where(s=>!s.ground))
+            {
+                var visual=placement.visual;var t=visual.transform;var b=visual.sprite.bounds;
+                Vector2 bl=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(b.min.x,b.min.y,0)));
+                Vector2 br=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(b.max.x,b.min.y,0)));
+                Vector2 tl=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(b.min.x,b.max.y,0)));
+                Vector2 tr=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(b.max.x,b.max.y,0)));
+                Require(Mathf.Abs(br.y-bl.y)<.05f&&Mathf.Abs(tl.x-bl.x)<.05f,placement.name+": artwork edges are skewed.");
+                Require(Mathf.Abs(Vector2.Distance(bl,br)-Vector2.Distance(tl,tr))<.05f,placement.name+": artwork became a trapezoid.");
+                float expected=b.size.x*t.lossyScale.x/(b.size.y*t.lossyScale.y);
+                Require(Mathf.Abs(Vector2.Distance(bl,br)/Vector2.Distance(bl,tl)-expected)<.001f,placement.name+": artwork aspect ratio changed.");
+                count++;
+            }
+            Require(count>0,"No artwork found.");
+            return count+" 张非地面图片：投影边框无倾斜、梯形变形和额外宽高压缩";
+        }
+
         public static string CheckPortablePrefabs()
         {
             var definition = AssetDatabase.LoadAssetAtPath<ModuleDefinition>("Assets/Modules/Restaurant/RestaurantDefinition.asset");

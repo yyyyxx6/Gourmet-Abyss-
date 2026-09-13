@@ -24,6 +24,7 @@ MonoBehaviour:
   maxPointerOffset: 3
   responseExponent: 1.4
   pointerSmoothTime: 0.14
+  viewStandard: {fileID: 11400000, guid: 00158273e388ce944b361f936d91377e, type: 2}
   pitch: 45
   fieldOfView: 40
   distance: 27.5
