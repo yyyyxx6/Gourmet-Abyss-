@@ -14,22 +14,41 @@ public class KeepMainCamera : MonoSingleton<KeepMainCamera>
 
     public TransitionAnimator transitionAnimator;
     public Canvas mainUICanvas;
-    // Start is called before the first frame update
-    void Start()
+    private const float DefaultScreenSpacePlaneDistance = 1f;
+
+    private void OnEnable()
     {
-        
+        RefreshBindings();
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
     public void tKeepMainCamera()
     {
-        print("相机切换");
-        print(Camera.main.name);
-        transitionAnimator.mainCamera=Camera.main;
-        mainUICanvas.worldCamera=Camera.main;
+        RefreshBindings();
+    }
+
+    private void RefreshBindings()
+    {
+        var mainCamera = Camera.main;
+        if (mainCamera == null)
+        {
+            Debug.LogWarning("KeepMainCamera: 当前没有可用的 MainCamera，暂时跳过 UI 相机绑定。", this);
+            return;
+        }
+
+        if (transitionAnimator != null)
+        {
+            transitionAnimator.mainCamera = mainCamera;
+        }
+
+        if (mainUICanvas == null || mainUICanvas.renderMode == UnityEngine.RenderMode.ScreenSpaceOverlay)
+        {
+            return;
+        }
+
+        mainUICanvas.worldCamera = mainCamera;
+        if (mainUICanvas.renderMode == UnityEngine.RenderMode.ScreenSpaceCamera && mainUICanvas.planeDistance <= 0f)
+        {
+            mainUICanvas.planeDistance = DefaultScreenSpacePlaneDistance;
+        }
     }
 }
