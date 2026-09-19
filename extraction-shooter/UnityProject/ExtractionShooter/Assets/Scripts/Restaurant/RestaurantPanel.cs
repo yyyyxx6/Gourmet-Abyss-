@@ -1753,6 +1753,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         }
 
         recipe.locked = false;
+        RunSessionManager.Instance?.RecordRecipeUnlocked(dishID);
         Debug.Log($"已解锁菜谱：{recipe.dishName} (ID={recipe.dishID})");
 
         // 如果餐厅面板当前是打开状态，刷新一次菜单显示

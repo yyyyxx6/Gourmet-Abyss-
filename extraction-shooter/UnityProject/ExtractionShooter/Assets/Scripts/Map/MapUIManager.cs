@@ -289,7 +289,8 @@ public class MapUIManager : MonoSingleton<MapUIManager>
         // 在这里加载场景
         if (!string.IsNullOrEmpty(regionData.sceneName))
         {
-            LevelManager.instance.EnterLevel(regionData.sceneName);
+            if (LevelManager.instance == null || !LevelManager.instance.TryEnterLevel(regionData.sceneName))
+                return;
             GameObject.FindGameObjectWithTag("Player").GetComponent<TopDownController>().enabled = false;
             //UnityEngine.SceneManagement.SceneManager.LoadScene(regionData.sceneName, UnityEngine.SceneManagement.LoadSceneMode.Additive);
             // 统一通过 HomeCavecar 关闭，避免仅隐藏对象导致 isUIActive 状态残留
@@ -391,4 +392,3 @@ public class MapUIManager : MonoSingleton<MapUIManager>
         InitializeMapUI();
     }
 }
-

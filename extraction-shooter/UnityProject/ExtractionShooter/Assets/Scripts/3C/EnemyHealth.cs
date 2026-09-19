@@ -863,6 +863,8 @@ public class EnemyHealth : MonoBehaviour
         if (isDead) return;
         
         isDead = true;
+        if (healthBarType == HealthBarType.Monster)
+            RunSessionManager.Instance?.RecordKill();
         //Debug.Log($"{gameObject.name} 被击败了！");
         
         // 死亡时停止所有隐藏协程

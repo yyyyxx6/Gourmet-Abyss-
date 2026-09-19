@@ -2,15 +2,6 @@ using System;
 using UnityEngine;
 
 /// <summary>
-/// 宠物类型枚举：WeaponStatsManager 的宠物状态列表会用到它。
-/// </summary>
-public enum PetType
-{
-    None = 0,
-    FlyingCompanion = 1, // 对应现有的 FlyingCompanionController（飞行随从）
-}
-
-/// <summary>
 /// 宠物成长数值（由 PetManager 在战斗进入时写入到“宠物系统”组件）。
 /// </summary>
 [Serializable]
@@ -51,4 +42,3 @@ public interface IPetSystem
 {
     void ApplyGrowth(PetGrowthValues growth);
 }
-

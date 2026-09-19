@@ -54,8 +54,6 @@ public class LootCollector : MonoBehaviour
     [SerializeField] private bool plantDirectToGameVal = true; // Legacy compatibility only.
 
     [Header("背包已满设置")]
-    [Tooltip("背包已满时是否仍然飞向玩家并销毁")]
-    [SerializeField] private bool flyAndDestroyWhenFull = true; // 背包已满时是否仍然飞向玩家并销毁
     [Tooltip("背包满时重试检测间隔（秒）")]
     [SerializeField] private float fullRetryInterval = 0.5f;
     [Tooltip("背包满提示消息冷却（秒），防止刷屏")]
@@ -66,6 +64,8 @@ public class LootCollector : MonoBehaviour
     private Rigidbody rb;
     private Collider col;
     private Vector3 startPosition;
+    private Vector3 initialScale;
+    private bool collectionResolved;
     private float spawnTime;
     private float timeSinceLastInteraction = 0f;
     private bool isReadyToCollect = false;
@@ -85,6 +85,7 @@ public class LootCollector : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         col = GetComponent<Collider>();
         startPosition = transform.position;
+        initialScale = transform.localScale;
         spawnTime = Time.time;
         timeSinceLastInteraction = Time.time;
 
@@ -258,6 +259,7 @@ public class LootCollector : MonoBehaviour
 
     private void BeginCollectionForPlayer()
     {
+        if (!CanPlayerCollect() || collectionResolved) return;
         playerInTrigger = true;
         timeSinceLastInteraction = Time.time;
 
@@ -274,15 +276,6 @@ public class LootCollector : MonoBehaviour
         if (hasSpace)
         {
             canBeCollected = true;
-            StartFlyToPlayer();
-            return;
-        }
-
-        if (flyAndDestroyWhenFull)
-        {
-            canBeCollected = true;
-            isInventoryFull = true;
-            ShowFullInventoryMessage();
             StartFlyToPlayer();
             return;
         }
@@ -335,9 +328,11 @@ public class LootCollector : MonoBehaviour
     // 在触发器内等待收集
     private IEnumerator WaitForCollectionInTrigger()
     {
-        while (playerInTrigger && !canBeCollected)
+        while (playerInTrigger && !canBeCollected && !collectionResolved)
         {
             yield return new WaitForSeconds(Mathf.Max(0.1f, fullRetryInterval));
+
+            if (!CanPlayerCollect()) continue;
 
             bool hasSpace = CheckInventorySpace();
             isInventoryFull = !hasSpace;
@@ -345,15 +340,6 @@ public class LootCollector : MonoBehaviour
             if (hasSpace)
             {
                 canBeCollected = true;
-                StartFlyToPlayer();
-                yield break;
-            }
-            else if (flyAndDestroyWhenFull)
-            {
-                // 即使背包已满，也直接开始飞向玩家
-                canBeCollected = true;
-                isInventoryFull = true;
-                ShowFullInventoryMessage();
                 StartFlyToPlayer();
                 yield break;
             }
@@ -366,14 +352,19 @@ public class LootCollector : MonoBehaviour
 
     private LootStorageMode GetEffectiveStorageMode()
     {
-        if (storageMode != LootStorageMode.UseLegacyConfiguration)
-            return storageMode;
-
-        // Existing plant prefabs used these two booleans. Preserve their serialized
-        // behavior, but route them to the run-only bag instead of permanent storage.
-        return plantDirectToGameVal && isPlantResource
-            ? LootStorageMode.RunIngredientBag
-            : LootStorageMode.SlotInventory;
+        switch (ResourceStorageRules.GetCategory(resourceType))
+        {
+            case RunResourceCategory.Ingredient:
+                return LootStorageMode.SlotInventory;
+            case RunResourceCategory.Gathered:
+                return LootStorageMode.RunIngredientBag;
+            case RunResourceCategory.Permanent:
+                return LootStorageMode.PermanentResource;
+            default:
+                return storageMode == LootStorageMode.UseLegacyConfiguration
+                    ? LootStorageMode.SlotInventory
+                    : storageMode;
+        }
     }
 
     private bool UsesNoSlotStorage()
@@ -385,10 +376,20 @@ public class LootCollector : MonoBehaviour
     // 检查背包空间
     private bool CheckInventorySpace()
     {
-        InventoryManager inventoryManager = FindObjectOfType<InventoryManager>();
+        if (resourceAmount <= 0 || ResourceStorageRules.GetCategory(resourceType) == RunResourceCategory.Invalid)
+            return false;
+        InventoryManager inventoryManager = InventoryManager.instance;
+        LootStorageMode mode = GetEffectiveStorageMode();
+        if (mode == LootStorageMode.RunIngredientBag)
+            return inventoryManager != null && inventoryManager.GetRunGatheredCount(resourceType) < int.MaxValue;
+        if (mode == LootStorageMode.PermanentResource)
+        {
+            ResourceItem resource = GameValManager.Instance?.GetResourceInfo(resourceType);
+            return resource != null && resource.count < resource.maxCapacity;
+        }
         if (inventoryManager != null)
         {
-            return inventoryManager.CanAddItem(resourceType, resourceAmount);
+            return inventoryManager.CanAddItem(resourceType, 1);
         }
         return false;
     }
@@ -433,6 +434,11 @@ public class LootCollector : MonoBehaviour
 
     private void FlyToPlayer()
     {
+        if (!CanPlayerCollect())
+        {
+            ResetCollectionForRetry();
+            return;
+        }
         Vector3 direction = (player.position - transform.position).normalized;
         float distance = Vector3.Distance(transform.position, player.position);
 
@@ -461,7 +467,7 @@ public class LootCollector : MonoBehaviour
 
         // 缩小效果（接近时）
         float distanceScaleFactor = Mathf.Clamp01(distance / 2f);
-        transform.localScale = Vector3.one * distanceScaleFactor;
+        transform.localScale = initialScale * distanceScaleFactor;
 
         // 接近玩家时检测收集
         if (distance < 0.5f)
@@ -484,138 +490,87 @@ public class LootCollector : MonoBehaviour
 
     private void Collect()
     {
+        if (collectionResolved || !CanPlayerCollect() || resourceAmount <= 0) return;
+        if (ResourceStorageRules.GetCategory(resourceType) == RunResourceCategory.Invalid) return;
+        // Destroy is deferred until the end of the frame; block duplicate trigger callbacks now.
+        collectionResolved = true;
         LootStorageMode effectiveStorageMode = GetEffectiveStorageMode();
-        if (UsesNoSlotStorage())
+        int accepted = 0;
+        InventoryManager inventory = InventoryManager.instance;
+        if (effectiveStorageMode == LootStorageMode.SlotInventory)
         {
-            // 播放收集特效
+            if (inventory != null) accepted = inventory.AddItemPartial(resourceType, resourceAmount);
+        }
+        else if (effectiveStorageMode == LootStorageMode.RunIngredientBag)
+        {
+            if (inventory != null) accepted = inventory.AddRunGathered(resourceType, resourceAmount);
+        }
+        else if (effectiveStorageMode == LootStorageMode.PermanentResource && GameValManager.Instance != null)
+        {
+            int before = GameValManager.Instance.GetResourceCount(resourceType);
+            ResourceItem info = GameValManager.Instance.GetResourceInfo(resourceType);
+            int amount = info == null ? 0 : Mathf.Min(resourceAmount, Mathf.Max(0, info.maxCapacity - before));
+            if (amount > 0)
+            {
+                GameValManager.Instance.AddResource(resourceType, amount);
+                accepted = GameValManager.Instance.GetResourceCount(resourceType) - before;
+            }
+        }
+
+        accepted = Mathf.Clamp(accepted, 0, resourceAmount);
+        resourceAmount -= accepted;
+        if (accepted > 0)
+        {
             if (collectEffectPrefab != null)
-            {
                 Instantiate(collectEffectPrefab, transform.position, Quaternion.identity);
-            }
-
-            // 播放收集音效
             if (collectSound != null)
-            {
                 AudioSource.PlayClipAtPoint(collectSound, transform.position);
-            }
-
-            // 触发玩家反馈
             TriggerPlayerFeedback();
-
-            if (AudioManager.Instance != null)
-            {
-                AudioManager.Instance.PlayAudio("2");
-            }
-
-            bool stored = false;
-            if (effectiveStorageMode == LootStorageMode.RunIngredientBag)
-            {
-                InventoryManager inventoryManager = FindObjectOfType<InventoryManager>();
-                stored = inventoryManager != null;
-                if (stored)
-                    inventoryManager.AddRunIngredient(resourceType, resourceAmount);
-            }
-            else if (effectiveStorageMode == LootStorageMode.PermanentResource && GameValManager.Instance != null)
-            {
-                GameValManager.Instance.AddResource(resourceType, resourceAmount);
-                stored = true;
-            }
-
-            if (stored)
-            {
-                Debug.Log($"已收集到 {effectiveStorageMode}: {resourceAmount} 个 {resourceType}");
-                Destroy(gameObject);
-                return;
-            }
-
-            Debug.LogWarning($"{effectiveStorageMode} 不可用，资源未写入，将按占格背包逻辑回退：{resourceAmount} 个 {resourceType}");
+            AudioManager.Instance?.PlayAudio("2");
         }
 
-        // 统一走战斗背包：收集前都要检查背包空间
-        bool hasSpaceNow = CheckInventorySpace();
-        isInventoryFull = !hasSpaceNow;
-
-        if (!hasSpaceNow && !flyAndDestroyWhenFull)
+        if (resourceAmount == 0)
         {
-            Debug.LogWarning($"收集时背包已满: {resourceAmount} 个 {resourceType}");
-            ShowFullInventoryMessage();
-            canBeCollected = false;
-            isFlyingToPlayer = false;
-
-            // 重置位置和状态
-            transform.position = startPosition;
-
-            // 重新等待空间
-            StartCoroutine(WaitAndRetryCollection());
-            return;
-        }
-
-        // 播放收集特效
-        if (collectEffectPrefab != null)
-        {
-            Instantiate(collectEffectPrefab, transform.position, Quaternion.identity);
-        }
-
-        // 播放收集音效
-        if (collectSound != null)
-        {
-            AudioSource.PlayClipAtPoint(collectSound, transform.position);
-        }
-
-        // 触发玩家反馈
-        TriggerPlayerFeedback();
-
-        bool addedSuccessfully = false;
-
-        // 检查背包是否已满
-        if (!isInventoryFull)
-        {
-            AudioManager.Instance.PlayAudio("2");
-
-            // 统一逻辑：战斗中掉落物只加入临时背包，不直接写入 GameValManager
-            InventoryManager inventoryManager = FindObjectOfType<InventoryManager>();
-            if (inventoryManager != null)
-            {
-                addedSuccessfully = inventoryManager.AddItem(resourceType, resourceAmount);
-            }
-
-            if (addedSuccessfully)
-            {
-                Debug.Log($"已收集到战斗背包: {resourceAmount} 个 {resourceType}");
-            }
-        }
-        else
-        {
-            // 背包已满，不添加任何数值，但仍然销毁物品
-            Debug.Log($"背包已满，物品销毁但未添加数值: {resourceAmount} 个 {resourceType}");
-            ShowFullInventoryMessage();
-            addedSuccessfully = true; // 标记为成功，以便销毁物品
-        }
-
-        if (addedSuccessfully)
-        {
-            // 销毁自身
             Destroy(gameObject);
         }
         else
         {
-            // 添加失败，重新等待
-            Debug.LogWarning($"收集失败: {resourceAmount} 个 {resourceType}");
-            canBeCollected = false;
-            isFlyingToPlayer = false;
-            transform.position = startPosition;
-
-            // 统一等待背包空间后重试
-            StartCoroutine(WaitAndRetryCollection());
+            ShowFullInventoryMessage();
+            ResetCollectionForRetry();
         }
+    }
+
+    private bool CanPlayerCollect()
+    {
+        if (player == null) return false;
+        TopDownController controller = player.GetComponent<TopDownController>();
+        if (controller != null && controller.isDead) return false;
+        if (LevelManager.instance != null && LevelManager.instance.IsTransitioning()) return false;
+        return PlayerStateManager.instance == null ||
+            (PlayerStateManager.instance.currentState != PlayerState.UI &&
+             PlayerStateManager.instance.currentState != PlayerState.Settlement);
+    }
+
+    private void ResetCollectionForRetry()
+    {
+        collectionResolved = false;
+        canBeCollected = false;
+        isFlyingToPlayer = false;
+        transform.position = startPosition;
+        transform.localScale = initialScale;
+        if (waitForCollectionCoroutine != null) StopCoroutine(waitForCollectionCoroutine);
+        waitForCollectionCoroutine = StartCoroutine(WaitAndRetryCollection());
     }
 
     // 等待并重试收集
     private IEnumerator WaitAndRetryCollection()
     {
-        while (!canBeCollected)
+        while (!canBeCollected && !collectionResolved)
         {
             yield return new WaitForSeconds(Mathf.Max(0.1f, fullRetryInterval));
+
+            if (!CanPlayerCollect() || col == null ||
+                Vector3.Distance(col.ClosestPoint(player.position), player.position) > 0.35f) continue;
 
             bool hasSpace = CheckInventorySpace();
             isInventoryFull = !hasSpace;
@@ -623,15 +578,6 @@ public class LootCollector : MonoBehaviour
             if (hasSpace)
             {
                 canBeCollected = true;
-                StartFlyToPlayer();
-                yield break;
-            }
-            else if (flyAndDestroyWhenFull)
-            {
-                // 即使背包已满，也直接开始飞向玩家
-                canBeCollected = true;
-                isInventoryFull = true;
-                ShowFullInventoryMessage();
                 StartFlyToPlayer();
                 yield break;
             }

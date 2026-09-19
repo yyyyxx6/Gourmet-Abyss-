@@ -507,6 +507,7 @@ public class ExcelConfigReader : PersistentMonoSingleton<ExcelConfigReader>
             case 68: wsm.primaryAOEEdgeMinDamageRatio = Mathf.Clamp01(stat.initialValue); break;
             case 69: wsm.restaurantDishQueueSlotCount = Mathf.Max(1, (int)stat.initialValue); break;
             case 70: wsm.restaurantCustomerPrefabCount = Mathf.Max(0, (int)stat.initialValue); break;
+            case 71: wsm.deathRetentionRate = Mathf.Clamp01(stat.initialValue); break;
         }
     }
 

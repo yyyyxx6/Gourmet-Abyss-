@@ -44,21 +44,36 @@ public class InventoryManager : MonoSingleton<InventoryManager>
     // 格子列表（含多出的 1 格锁定预览；真正可用数见 usableSlotCount）
     private List<InventoryItemUI> slots = new List<InventoryItemUI>();
 
-    // Ingredients collected during the current dungeon run. These values do not
-    // consume slot inventory capacity and are only committed on a successful exit.
+    // The legacy field name is retained; only gathered resources use this no-slot store.
     private readonly RunIngredientStore runIngredients = new RunIngredientStore();
+    private bool isCommittingRunGathered;
 
     /// <summary>Resource type, previous count, current count.</summary>
-    public event Action<ResourceType, int, int> OnRunIngredientChanged
+    public event Action<ResourceType, int, int> OnRunGatheredChanged
     {
         add => runIngredients.Changed += value;
         remove => runIngredients.Changed -= value;
     }
-    [Header("局内食材调试")]
-    [SerializeField] private bool showRunIngredientDebugUI = true;
+    public event Action<ResourceType, int, int> OnRunIngredientChanged
+    {
+        add => OnRunGatheredChanged += value;
+        remove => OnRunGatheredChanged -= value;
+    }
+    [Header("局内采集物调试")]
+    [SerializeField] private bool showRunIngredientDebugUI = false;
     /// <summary>与 WeaponStatsManager.inventorySlotCount 一致，不含多出来的预览格。</summary>
     private int usableSlotCount;
     private Coroutine slotEntranceCoroutine;
+    private readonly List<SlotEntranceAnimation> activeSlotEntrances = new List<SlotEntranceAnimation>();
+
+    private sealed class SlotEntranceAnimation
+    {
+        public RectTransform Rect;
+        public Vector2 Position;
+        public Vector3 Scale;
+        public CanvasGroup Group;
+        public Coroutine Routine;
+    }
 
     private struct TransferFlyRequest
     {
@@ -97,9 +112,14 @@ public class InventoryManager : MonoSingleton<InventoryManager>
             return;
         }
 
-        fixedSlotCount = WeaponStatsManager.Instance.inventorySlotCount;
+        if (WeaponStatsManager.Instance != null)
+        {
+            fixedSlotCount = WeaponStatsManager.Instance.inventorySlotCount;
+            slotCapacity = WeaponStatsManager.Instance.inventorySlotCapacity;
+        }
+        fixedSlotCount = Mathf.Max(0, fixedSlotCount);
+        slotCapacity = Mathf.Max(0, slotCapacity);
         usableSlotCount = fixedSlotCount;
-        slotCapacity = WeaponStatsManager.Instance.inventorySlotCapacity;
 
         // 清除现有格子
         ClearExistingSlots();
@@ -126,7 +146,8 @@ public class InventoryManager : MonoSingleton<InventoryManager>
 #endif
 
         // 订阅背包数值变化事件
-        WeaponStatsManager.Instance.OnInventoryStatsChanged += OnInventoryStatsUpdated;
+        if (WeaponStatsManager.Instance != null)
+            WeaponStatsManager.Instance.OnInventoryStatsChanged += OnInventoryStatsUpdated;
         
         // 确保初始状态正确
         UpdateInventoryFullState();
@@ -147,7 +168,7 @@ public class InventoryManager : MonoSingleton<InventoryManager>
     protected override void OnDestroy()
     {
         base.OnDestroy();
-
+        CancelSlotEntranceAnimations();
         // 取消订阅事件
         if (WeaponStatsManager.Instance != null)
         {
@@ -158,8 +179,10 @@ public class InventoryManager : MonoSingleton<InventoryManager>
     // 当背包数值更新时的回调
     private void OnInventoryStatsUpdated()
     {
-        int newSlotCount = WeaponStatsManager.Instance.inventorySlotCount;
-        int newSlotCapacity = WeaponStatsManager.Instance.inventorySlotCapacity;
+        CancelSlotEntranceAnimations();
+        if (WeaponStatsManager.Instance == null || gridParent == null || slotPrefab == null) return;
+        int newSlotCount = Mathf.Max(0, WeaponStatsManager.Instance.inventorySlotCount);
+        int newSlotCapacity = Mathf.Max(0, WeaponStatsManager.Instance.inventorySlotCapacity);
 
         Debug.Log($"背包数值更新: 可用格={newSlotCount}, 新容量={newSlotCapacity}, 当前UI格数={slots.Count}, 当前容量={slotCapacity}");
 
@@ -384,9 +407,26 @@ public class InventoryManager : MonoSingleton<InventoryManager>
     public void PlaySlotsEntranceAnimation()
     {
         if (!isActiveAndEnabled || slots == null || slots.Count == 0) return;
+        CancelSlotEntranceAnimations();
+        slotEntranceCoroutine = StartCoroutine(CoPlaySlotsEntranceAnimation());
+    }
+
+    private void CancelSlotEntranceAnimations()
+    {
         if (slotEntranceCoroutine != null)
             StopCoroutine(slotEntranceCoroutine);
-        slotEntranceCoroutine = StartCoroutine(CoPlaySlotsEntranceAnimation());
+        slotEntranceCoroutine = null;
+        foreach (SlotEntranceAnimation animation in activeSlotEntrances)
+        {
+            if (animation.Routine != null) StopCoroutine(animation.Routine);
+            if (animation.Rect != null)
+            {
+                animation.Rect.anchoredPosition = animation.Position;
+                animation.Rect.localScale = animation.Scale;
+            }
+            if (animation.Group != null) animation.Group.alpha = 1f;
+        }
+        activeSlotEntrances.Clear();
     }
 
     private IEnumerator CoPlaySlotsEntranceAnimation()
@@ -398,7 +438,19 @@ public class InventoryManager : MonoSingleton<InventoryManager>
         {
             InventoryItemUI slot = slots[i];
             if (slot == null) continue;
-            StartCoroutine(CoAnimateSingleSlotEntrance(slot.transform as RectTransform));
+            RectTransform rect = slot.transform as RectTransform;
+            if (rect == null) continue;
+            CanvasGroup group = rect.GetComponent<CanvasGroup>();
+            if (group == null) group = rect.gameObject.AddComponent<CanvasGroup>();
+            var animation = new SlotEntranceAnimation
+            {
+                Rect = rect,
+                Position = rect.anchoredPosition,
+                Scale = rect.localScale,
+                Group = group
+            };
+            activeSlotEntrances.Add(animation);
+            animation.Routine = StartCoroutine(CoAnimateSingleSlotEntrance(animation));
             if (delayStep > 0f)
                 yield return new WaitForSeconds(delayStep);
         }
@@ -406,20 +458,15 @@ public class InventoryManager : MonoSingleton<InventoryManager>
         slotEntranceCoroutine = null;
     }
 
-    private IEnumerator CoAnimateSingleSlotEntrance(RectTransform slotRect)
+    private IEnumerator CoAnimateSingleSlotEntrance(SlotEntranceAnimation animation)
     {
+        RectTransform slotRect = animation.Rect;
         if (slotRect == null) yield break;
 
-        Vector2 endPos = slotRect.anchoredPosition;
+        Vector2 endPos = animation.Position;
         Vector2 startPos = endPos + new Vector2(0f, slotEntranceFromYOffset);
-        Vector3 baseScale = slotRect.localScale;
-        CanvasGroup cg = slotRect.GetComponent<CanvasGroup>();
-        bool addedCanvasGroup = false;
-        if (cg == null)
-        {
-            cg = slotRect.gameObject.AddComponent<CanvasGroup>();
-            addedCanvasGroup = true;
-        }
+        Vector3 baseScale = animation.Scale;
+        CanvasGroup cg = animation.Group;
 
         float duration = Mathf.Max(0.05f, slotEntranceDuration);
         float overhead = Mathf.Max(0f, slotEntranceOverhead);
@@ -431,6 +478,11 @@ public class InventoryManager : MonoSingleton<InventoryManager>
 
         while (elapsed < duration)
         {
+            if (slotRect == null || cg == null)
+            {
+                activeSlotEntrances.Remove(animation);
+                yield break;
+            }
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / duration);
             float eased = 1f - Mathf.Pow(1f - t, 3f); // 丝滑减速
@@ -442,6 +494,11 @@ public class InventoryManager : MonoSingleton<InventoryManager>
             yield return null;
         }
 
+        if (slotRect == null || cg == null)
+        {
+            activeSlotEntrances.Remove(animation);
+            yield break;
+        }
         slotRect.anchoredPosition = endPos;
         slotRect.localScale = baseScale;
         cg.alpha = 1f;
@@ -451,6 +508,11 @@ public class InventoryManager : MonoSingleton<InventoryManager>
         float wobbleElapsed = 0f;
         while (wobbleElapsed < wobbleDuration)
         {
+            if (slotRect == null)
+            {
+                activeSlotEntrances.Remove(animation);
+                yield break;
+            }
             wobbleElapsed += Time.deltaTime;
             float t = Mathf.Clamp01(wobbleElapsed / wobbleDuration);
             float dampedWave = Mathf.Sin(t * Mathf.PI * 2.2f) * (1f - t);
@@ -458,142 +520,147 @@ public class InventoryManager : MonoSingleton<InventoryManager>
             slotRect.localScale = baseScale * mul;
             yield return null;
         }
-        slotRect.localScale = baseScale;
-
-        if (addedCanvasGroup && cg != null)
-        {
-            Destroy(cg);
-        }
+        if (slotRect != null) slotRect.localScale = baseScale;
+        activeSlotEntrances.Remove(animation);
     }
 
-    // 添加物品到背包
-    public bool AddItem(ResourceType itemType, int amount)
+    public InventorySnapshot CaptureInventory()
     {
-        if (amount <= 0)
+        var captured = new List<InventorySlotSnapshot>();
+        for (int index = 0; index < usableSlotCount; index++)
         {
-            Debug.LogWarning($"添加物品数量必须为正数: {itemType} {amount}");
-            return false;
+            InventoryItemUI slot = GetSlot(index);
+            if (slot == null || slot.IsLockedPreviewSlot())
+                throw new InvalidOperationException("An unlocked inventory slot is missing or locked.");
+            bool empty = slot.IsEmpty();
+            captured.Add(new InventorySlotSnapshot(index,
+                empty ? ResourceType.None : slot.GetItemType(),
+                empty ? 0 : slot.GetCurrentCount(), slot.GetMaxCapacity()));
+        }
+        return new InventorySnapshot(captured);
+    }
+
+    public InventorySnapshot CaptureIngredientInventory()
+    {
+        InventorySnapshot captured = CaptureInventory();
+        var ingredientSlots = new List<InventorySlotSnapshot>();
+        foreach (InventorySlotSnapshot slot in captured.Slots)
+        {
+            ingredientSlots.Add(ResourceStorageRules.IsIngredient(slot.ItemType)
+                ? slot
+                : new InventorySlotSnapshot(slot.Index, ResourceType.None, 0, slot.Capacity));
+        }
+        return new InventorySnapshot(ingredientSlots);
+    }
+
+    public bool ApplyInventorySnapshot(InventorySnapshot snapshot)
+    {
+        if (snapshot == null || snapshot.Slots.Count != usableSlotCount) return false;
+
+        // Validate the complete layout before any live slot is changed.
+        foreach (InventorySlotSnapshot captured in snapshot.Slots)
+        {
+            InventoryItemUI slot = GetSlot(captured.Index);
+            if (slot == null || slot.IsLockedPreviewSlot() ||
+                slot.GetSlotData().slotIndex != captured.Index ||
+                slot.GetMaxCapacity() != captured.Capacity)
+                return false;
         }
 
-        int remainingAmount = amount;
+        foreach (InventorySlotSnapshot captured in snapshot.Slots)
+            slots[captured.Index].ApplySnapshotData(captured);
 
-        // 第一步：尝试添加到已有的同类型格子里（优先填满）
-        remainingAmount = AddToExistingSlots(itemType, remainingAmount);
-
-        // 第二步：如果还有剩余，尝试添加到空格子
-        if (remainingAmount > 0)
+        // A broken display must not leave half an inventory applied or replay a resource transfer.
+        foreach (InventorySlotSnapshot captured in snapshot.Slots)
         {
-            remainingAmount = AddToEmptySlots(itemType, remainingAmount);
+            try
+            {
+                slots[captured.Index].RefreshSnapshotView();
+            }
+            catch (Exception error)
+            {
+                Debug.LogException(error, this);
+            }
         }
-
-        // 如果还有剩余物品，表示背包已满
-        if (remainingAmount > 0)
+        try
         {
-            Debug.LogWarning($"背包已满，无法完全添加 {itemType}，剩余: {remainingAmount}");
-            return false;
+            UpdateInventoryFullState();
         }
-        
-        // 添加物品后更新背包满状态
-        UpdateInventoryFullState();
-        
+        catch (Exception error)
+        {
+            Debug.LogException(error, this);
+        }
         return true;
     }
 
-    // 添加到已有的同类型格子（优先填满已有格子）
-    private int AddToExistingSlots(ResourceType itemType, int amount)
+    public InventoryPackResult AddItems(
+        IReadOnlyDictionary<ResourceType, int> requested,
+        Func<ResourceType, int> priority = null)
     {
-        int remaining = amount;
-
-        // 找到所有同类型且未满的可用格子
-        var matchingSlots = slots
-            .Select((slot, idx) => (slot, idx))
-            .Where(t => t.idx < usableSlotCount && t.slot != null &&
-                        !t.slot.IsEmpty() &&
-                        t.slot.GetItemType() == itemType &&
-                        !t.slot.IsFull())
-            .Select(t => t.slot)
-            .ToList();
-
-        // 按照当前数量从大到小排序，优先填满数量多的格子
-        matchingSlots = matchingSlots.OrderByDescending(slot => slot.GetCurrentCount()).ToList();
-
-        // 按顺序填满格子
-        foreach (var slot in matchingSlots)
+        if (requested == null) throw new ArgumentNullException(nameof(requested));
+        foreach (ResourceType type in requested.Keys)
         {
-            if (remaining <= 0) break;
+            if (!ResourceStorageRules.UsesSlots(type))
+                throw new ArgumentException($"Resource {type} does not use inventory slots.", nameof(requested));
+        }
 
-            // 计算这个格子还能放多少
-            int canAdd = slot.GetRemainingCapacity();
-            if (canAdd > 0)
+        InventorySnapshot before = CaptureInventory();
+        InventoryPackResult result = InventoryPacking.Add(before, requested, priority);
+        if (!ApplyInventorySnapshot(result.Snapshot))
+            throw new InvalidOperationException("The inventory layout changed while applying a packing result.");
+
+        for (int index = 0; index < before.Slots.Count; index++)
+        {
+            if (result.Snapshot.Slots[index].Count > before.Slots[index].Count)
+                slots[before.Slots[index].Index].PlaySlotFeedbackPulse();
+        }
+        return result;
+    }
+
+    public int AddItemPartial(ResourceType itemType, int amount)
+    {
+        if (amount <= 0 || !ResourceStorageRules.UsesSlots(itemType))
+        {
+            Debug.LogWarning($"Cannot add resource to slot inventory: {itemType} {amount}");
+            return 0;
+        }
+
+        int requestedAmount = Math.Min(amount, GetAvailableCapacity(itemType));
+        if (requestedAmount == 0) return 0;
+        InventoryPackResult result = AddItems(new Dictionary<ResourceType, int> { { itemType, requestedAmount } });
+        int accepted;
+        return result.Accepted.TryGetValue(itemType, out accepted) ? accepted : 0;
+    }
+
+    // The legacy bool indicates complete acceptance; a partial addition is still retained.
+    public bool AddItem(ResourceType itemType, int amount)
+    {
+        return amount > 0 && AddItemPartial(itemType, amount) == amount;
+    }
+
+    public int GetAvailableCapacity(ResourceType itemType)
+    {
+        if (!ResourceStorageRules.UsesSlots(itemType)) return 0;
+        long capacity = 0;
+        long currentCount = 0;
+        for (int index = 0; index < usableSlotCount && index < slots.Count; index++)
+        {
+            InventoryItemUI slot = slots[index];
+            if (slot == null || slot.IsLockedPreviewSlot()) continue;
+            if (slot.IsEmpty())
+                capacity += Math.Max(0, slot.GetMaxCapacity());
+            else if (slot.GetItemType() == itemType)
             {
-                int addAmount = Mathf.Min(remaining, canAdd);
-                slot.AddItem(itemType, addAmount, out int added);
-                remaining -= added;
-                if (added > 0)
-                    slot.PlaySlotFeedbackPulse();
+                currentCount += slot.GetCurrentCount();
+                capacity += Math.Max(0, slot.GetRemainingCapacity());
             }
         }
-
-        return remaining;
+        return (int)Math.Max(0L, Math.Min(capacity, int.MaxValue - currentCount));
     }
 
-    // 添加到空格子
-    private int AddToEmptySlots(ResourceType itemType, int amount)
-    {
-        int remaining = amount;
-
-        // 找到所有空可用格子
-        var emptySlots = slots
-            .Select((slot, idx) => (slot, idx))
-            .Where(t => t.idx < usableSlotCount && t.slot != null && t.slot.IsEmpty())
-            .Select(t => t.slot)
-            .ToList();
-
-        // 添加到空格子
-        foreach (var slot in emptySlots)
-        {
-            if (remaining <= 0) break;
-
-            slot.AddItem(itemType, remaining, out int added);
-            remaining -= added;
-            if (added > 0)
-                slot.PlaySlotFeedbackPulse();
-        }
-
-        return remaining;
-    }
-
-    // 检查是否能添加指定数量的物品
     public bool CanAddItem(ResourceType itemType, int amount)
     {
-        if (amount <= 0) return false;
-
-        int remainingCapacity = 0;
-
-        // 计算同类型可用格子的剩余容量
-        var matchingSlots = slots
-            .Select((slot, idx) => (slot, idx))
-            .Where(t => t.idx < usableSlotCount && t.slot != null &&
-                        !t.slot.IsEmpty() &&
-                        t.slot.GetItemType() == itemType)
-            .Select(t => t.slot)
-            .ToList();
-
-        foreach (var slot in matchingSlots)
-        {
-            if (!slot.IsFull())
-            {
-                remainingCapacity += slot.GetRemainingCapacity();
-            }
-        }
-
-        // 计算空可用格子的总容量
-        int emptyUsableCount = slots
-            .Select((slot, idx) => (slot, idx))
-            .Count(t => t.idx < usableSlotCount && t.slot != null && t.slot.IsEmpty());
-        remainingCapacity += emptyUsableCount * slotCapacity;
-
-        return remainingCapacity >= amount;
+        return amount > 0 && GetAvailableCapacity(itemType) >= amount;
     }
 
     // 获取指定类型物品的总数量
@@ -605,59 +672,133 @@ public class InventoryManager : MonoSingleton<InventoryManager>
             .Sum(t => t.slot.GetCurrentCount());
     }
 
-    /// <summary>Adds an ingredient to the current run without consuming an inventory slot.</summary>
-    public bool AddRunIngredient(ResourceType itemType, int amount)
+    public int AddRunGathered(ResourceType itemType, int amount)
     {
-        if (amount <= 0)
+        if (amount <= 0 || !ResourceStorageRules.IsGathered(itemType))
         {
-            Debug.LogWarning($"AddRunIngredient requires a positive amount: {itemType} {amount}");
-            return false;
+            Debug.LogWarning($"Cannot add resource to the gathered-resource store: {itemType} {amount}");
+            return 0;
         }
 
-        int oldCount = GetRunIngredientCount(itemType);
-        bool added = runIngredients.Add(itemType, amount);
-        int newCount = GetRunIngredientCount(itemType);
-        Debug.Log($"Run ingredient added: {itemType} +{newCount - oldCount}, total={newCount}");
-        return added;
+        int oldCount = runIngredients.GetCount(itemType);
+        runIngredients.Add(itemType, amount);
+        int accepted = runIngredients.GetCount(itemType) - oldCount;
+        if (accepted > 0)
+            RunSessionManager.Instance?.RecordGathered(itemType, accepted);
+        return accepted;
     }
 
-    public int GetRunIngredientCount(ResourceType itemType)
+    public int GetRunGatheredCount(ResourceType itemType)
     {
-        return runIngredients.GetCount(itemType);
+        return ResourceStorageRules.IsGathered(itemType) ? runIngredients.GetCount(itemType) : 0;
     }
 
-    /// <summary>Returns a snapshot so callers cannot mutate the run inventory.</summary>
-    public Dictionary<ResourceType, int> GetAllRunIngredientCounts()
+    public Dictionary<ResourceType, int> GetRunGatheredCounts()
     {
         return runIngredients.GetSnapshot();
     }
 
-    public void ClearRunIngredients()
+    public void ClearRunGathered()
     {
-        if (runIngredients.Count == 0) return;
         runIngredients.Clear();
-        Debug.Log("Run ingredients cleared.");
     }
 
-    /// <summary>Commits current-run ingredients to permanent storage after a successful exit.</summary>
-    public void TransferRunIngredientsToGameValAndClear()
+    /// <summary>Applies a death allocation without recording retained items as newly gathered.</summary>
+    public void ReplaceRunGathered(IReadOnlyDictionary<ResourceType, int> counts)
     {
-        if (runIngredients.Count == 0) return;
-        if (GameValManager.Instance == null)
+        Dictionary<ResourceType, int> previous = ReplaceRunGatheredSilently(counts);
+        NotifyRunGatheredChanges(previous);
+    }
+
+    public Dictionary<ResourceType, int> ReplaceRunGatheredSilently(IReadOnlyDictionary<ResourceType, int> counts)
+    {
+        if (counts == null) throw new ArgumentNullException(nameof(counts));
+        var validated = new Dictionary<ResourceType, int>();
+        foreach (KeyValuePair<ResourceType, int> entry in counts)
         {
-            Debug.LogWarning("Cannot transfer run ingredients: GameValManager is missing.");
+            if (!ResourceStorageRules.IsGathered(entry.Key) || entry.Value < 0)
+                throw new ArgumentException("Invalid retained gathered-resource counts.", nameof(counts));
+            if (entry.Value > 0) validated.Add(entry.Key, entry.Value);
+        }
+        return runIngredients.SilentReplace(validated);
+    }
+
+    public void NotifyRunGatheredChanges(IReadOnlyDictionary<ResourceType, int> previous)
+    {
+        try
+        {
+            foreach (Exception error in runIngredients.Notify(previous))
+                Debug.LogException(error, this);
+        }
+        catch (Exception error)
+        {
+            Debug.LogException(error, this);
+        }
+    }
+
+    public void CommitRunGatheredToPermanent()
+    {
+        if (isCommittingRunGathered || runIngredients.Count == 0) return;
+        GameValManager gameValues = GameValManager.Instance;
+        if (gameValues == null)
+        {
+            Debug.LogWarning("Cannot commit gathered resources: GameValManager is missing.");
             return;
         }
 
-        Dictionary<ResourceType, int> snapshot = GetAllRunIngredientCounts();
-        foreach (KeyValuePair<ResourceType, int> entry in snapshot)
+        isCommittingRunGathered = true;
+        try
         {
-            if (entry.Value > 0)
-                GameValManager.Instance.AddResource(entry.Key, entry.Value);
-        }
+            foreach (KeyValuePair<ResourceType, int> entry in GetRunGatheredCounts())
+            {
+                int before = gameValues.GetResourceCount(entry.Key);
+                ResourceItem resource = gameValues.GetResourceInfo(entry.Key);
+                long available = resource == null ? 0L : Math.Max(0L, (long)resource.maxCapacity - before);
+                int transferAmount = (int)Math.Min(entry.Value, available);
+                if (transferAmount > 0)
+                {
+                    gameValues.AddResource(entry.Key, transferAmount);
+                    int accepted = (int)Math.Max(0L, Math.Min(transferAmount,
+                        (long)gameValues.GetResourceCount(entry.Key) - before));
+                    runIngredients.Remove(entry.Key, accepted);
+                }
 
-        ClearRunIngredients();
-        Debug.Log($"Transferred {snapshot.Count} run ingredient types to permanent storage.");
+                int remaining = runIngredients.GetCount(entry.Key);
+                if (remaining > 0)
+                    Debug.LogWarning($"Permanent resource storage is full; retained {remaining} gathered {entry.Key} for a later commit.");
+            }
+        }
+        finally
+        {
+            isCommittingRunGathered = false;
+        }
+    }
+
+    // Compatibility wrappers preserve call sites while enforcing the current storage rules.
+    public bool AddRunIngredient(ResourceType itemType, int amount)
+    {
+        if (ResourceStorageRules.IsIngredient(itemType)) return AddItem(itemType, amount);
+        return amount > 0 && AddRunGathered(itemType, amount) == amount;
+    }
+
+    public int GetRunIngredientCount(ResourceType itemType)
+    {
+        return GetRunGatheredCount(itemType);
+    }
+
+    public Dictionary<ResourceType, int> GetAllRunIngredientCounts()
+    {
+        return GetRunGatheredCounts();
+    }
+
+    public void ClearRunIngredients()
+    {
+        ClearRunGathered();
+    }
+
+    public void TransferRunIngredientsToGameValAndClear()
+    {
+        CommitRunGatheredToPermanent();
     }
 
     // 获取指定索引的格子
