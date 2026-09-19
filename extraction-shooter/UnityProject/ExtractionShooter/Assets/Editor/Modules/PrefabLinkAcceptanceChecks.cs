@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using GourmetAbyss.CameraSystem;
 using UnityEditor;
 using UnityEngine;
 using Object=UnityEngine.Object;
@@ -19,6 +20,16 @@ namespace Game.Modules.Editor
             PlacementPrefabLinks.ValidateWorld(world);
             var items=world.GetComponentsInChildren<PlacementItem>(true);
             Require(items.Length==42 && world.anchors.Length==37 && world.anchors.All(a=>a.point!=null),"Map content/reference count changed.");
+            Require(world.GetComponentsInChildren<CameraFacingVisual>(true).Length==0,
+                "Restaurant must stay on its authored world plane for the 2.5D presentation.");
+            Require(!world.GetComponentsInChildren<MonoBehaviour>(true)
+                .Any(component=>component!=null&&component.GetType().Name=="CameraFacingLayout"),
+                "Restaurant must not contain a camera-facing layout.");
+            Require(items.All(item=>item.visualRoot!=null&&
+                Quaternion.Angle(item.visualRoot.localRotation,item.ExpectedVisualRotation)<.001f),
+                "Restaurant visual roots must preserve the authored 2D plane.");
+            Require(items.All(i=>AssetDatabase.GetAssetPath(i.art.sprite).StartsWith("Assets/NewVersion/map/",StringComparison.Ordinal)),
+                "Restaurant items must reference original art Sprites, not generated copies.");
             Require(items.Count(i=>PlacementPrefabLinks.SourcePath(i)==Folder+"/Table.prefab")==6,"Tables do not inherit from shared Table prefab.");
             Require(items.Count(i=>PlacementPrefabLinks.SourcePath(i)==Folder+"/Chair.prefab")==24,"Chairs do not inherit through table assemblies.");
             var groups=world.transform.Find("VisualRoot").Cast<Transform>().Where(t=>t.name.StartsWith("TableSet")).ToArray();
@@ -51,7 +62,7 @@ namespace Game.Modules.Editor
             Color probe=new Color(.31f,.73f,.47f,1);float width=originalWidth*1.03f;
             try
             {
-                SetSource(path,width,probe);
+                SetSource(path,width,probe,false);
                 var items=World().GetComponentsInChildren<PlacementItem>(true).Where(i=>PlacementPrefabLinks.SourcePath(i)==path).ToArray();
                 Require(items.Length==count,"Unexpected map consumer count: "+name);
                 foreach(var item in items)
@@ -61,18 +72,18 @@ namespace Game.Modules.Editor
                 }
                 foreach(var anchor in World().anchors)Require(Vector3.Distance(anchor.point.position,anchors[anchor.id])<.0001f,"Art edit moved gameplay anchor.");
             }
-            finally {SetSource(path,originalWidth,originalColor);}
+            finally {SetSource(path,originalWidth,originalColor,true);}
             Require(File.ReadAllBytes(path).SequenceEqual(before),"Source asset was not restored byte-for-byte: "+path);
             foreach(var item in World().GetComponentsInChildren<PlacementItem>(true).Where(i=>PlacementPrefabLinks.SourcePath(i)==path))
                 Require(item.art.color==originalColor && Mathf.Abs(item.width-originalWidth)<.0001f,"Map did not restore original art.");
         }
 
-        static void SetSource(string path,float width,Color color)
+        static void SetSource(string path,float width,Color color,bool sourceDimensions)
         {
             var root=PrefabUtility.LoadPrefabContents(path);
             try
             {
-                var item=root.GetComponent<PlacementItem>();item.width=width;item.art.color=color;item.ApplyArtwork();
+                var item=root.GetComponent<PlacementItem>();item.useSourceDimensions=sourceDimensions;item.width=width;item.art.color=color;item.ApplyArtwork();
                 PrefabUtility.SaveAsPrefabAsset(root,path);
             }
             finally {PrefabUtility.UnloadPrefabContents(root);}

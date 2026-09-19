@@ -105,7 +105,7 @@ SpriteRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Sprite: {fileID: 21300000, guid: 2c98504b6e4205245a86bfab74368285, type: 2}
+  m_Sprite: {fileID: 21300000, guid: 5b28249a9e62e5940b465da5606408cd, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -207,7 +207,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4063209462033999042}
-  - component: {fileID: 5858750584716443586}
   m_Layer: 0
   m_Name: VisualRoot
   m_TagString: Untagged
@@ -231,22 +230,6 @@ Transform:
   - {fileID: 3470010287602843082}
   m_Father: {fileID: 3088950938499361531}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &5858750584716443586
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3903761515292623674}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7bd6d369c9df357458de7a959bd303c3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  targetCamera: {fileID: 0}
-  updateMode: 1
-  reverseForward: 0
-  additionalEulerAngles: {x: 0, y: 0, z: 0}
 --- !u!1 &5504331634326896440
 GameObject:
   m_ObjectHideFlags: 0
@@ -307,4 +290,5 @@ MonoBehaviour:
   spriteContact: {x: 0.5, y: 0}
   width: 1.57
   groundDepth: 1.18
-  footprint: {x: 0.95, y: 0.475}
+  footprint: {x: 1.57, y: 0.785}
+  useSourceDimensions: 1

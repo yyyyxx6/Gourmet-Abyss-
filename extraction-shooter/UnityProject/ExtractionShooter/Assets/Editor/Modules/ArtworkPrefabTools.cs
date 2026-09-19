@@ -72,7 +72,7 @@ namespace Game.Modules.Editor
                 string path = AssetDatabase.GetAssetPath(obj);
                 if (string.IsNullOrEmpty(path) || !path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                     continue;
-                MigratePrefab(path, true);
+                MigratePrefabOrSources(path, true);
             }
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -94,7 +94,7 @@ namespace Game.Modules.Editor
                 string path = AssetDatabase.GetAssetPath(obj);
                 if (string.IsNullOrEmpty(path) || !path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                     continue;
-                MigratePrefab(path, false);
+                MigratePrefabOrSources(path, false);
             }
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -199,21 +199,38 @@ namespace Game.Modules.Editor
                 foreach (var instanceRoot in root.GetComponentsInChildren<Transform>(true)
                     .Where(t => PrefabUtility.IsAnyPrefabInstanceRoot(t.gameObject)))
                 {
+                    // 旧流程曾把 CameraFacingVisual 直接加在地图中的预制体实例上。
+                    // 源预制体完成统一配置后，移除这些 Added Component override，
+                    // 让地图重新继承源预制体；否则后续更新主预制体不会可靠传播。
+                    foreach (var component in instanceRoot.GetComponentsInChildren<CameraFacingVisual>(true)
+                        .Where(PrefabUtility.IsAddedComponentOverride).ToArray())
+                    {
+                        PrefabUtility.RevertAddedComponent(component, InteractionMode.AutomatedAction);
+                        reverted++;
+                    }
+
                     var modifications = PrefabUtility.GetPropertyModifications(instanceRoot.gameObject);
                     if (modifications == null) continue;
+                    bool tableAssembly = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(instanceRoot.gameObject) ==
+                        PlacementTools.SampleFolder + "/TableSet.prefab";
                     foreach (var modification in modifications.ToArray())
                     {
                         var target = modification.target;
-                        bool visualTarget = target is PlacementItem || target is SpriteRenderer ||
-                            target is PlanarSprite || target is CameraFacingVisual;
-                        if (!visualTarget && target is Transform targetTransform)
-                            visualTarget = targetTransform.name == "VisualRoot" || targetTransform.name == "Art";
-                        if (!visualTarget) continue;
                         // GetPropertyModifications returns source-asset objects. Map each
                         // source target back to the matching object in this instance, then
                         // revert its serialized property on the instance itself.
                         var instanceTarget = FindInstanceTarget(instanceRoot, target);
                         if (instanceTarget == null) continue;
+                        bool visualTarget = target is PlacementItem || target is SpriteRenderer ||
+                            target is PlanarSprite || target is CameraFacingVisual;
+                        if (!visualTarget && target is Transform targetTransform)
+                            visualTarget = targetTransform.name == "VisualRoot" || targetTransform.name == "Art";
+                        // TableSet 内部桌、椅和座位锚点属于组合预制体的固定编排。
+                        // RestaurantWorld 只保存六个 TableSet 根的位置，不重复覆盖组合内部布局。
+                        if (!visualTarget && tableAssembly && instanceTarget is Transform instanceTransform &&
+                            instanceTransform != instanceRoot)
+                            visualTarget = true;
+                        if (!visualTarget) continue;
                         var serialized = new SerializedObject(instanceTarget);
                         var property = serialized.FindProperty(modification.propertyPath);
                         if (property == null) continue;
@@ -280,9 +297,12 @@ namespace Game.Modules.Editor
             item.physicsRoot = physics.transform;
             item.anchorsRoot = anchors.transform;
             item.spriteContact = new Vector2(.5f, 0f);
+            // 新预制体保留源 Sprite 的原始像素比例；项目倍率只用于镜头/布局校验，
+            // 不在创建时把 Art 节点统一缩小。
             item.width = sprite.bounds.size.x;
             item.groundDepth = sprite.bounds.size.y;
             item.footprint = new Vector2(item.width, Mathf.Max(.25f, item.width * .5f));
+            item.useSourceDimensions = true;
 
             var sorter = artGo.AddComponent<PlanarSprite>();
             sorter.visual = renderer;
@@ -310,17 +330,34 @@ namespace Game.Modules.Editor
 
                 foreach (var item in items)
                 {
-                    if (item.surface != PlacementItem.Surface.Artwork || item.visualRoot == null) continue;
+                    if (item.visualRoot == null) continue;
                     if (followCamera) AddFacing(item.visualRoot.gameObject);
                     else RemoveFacing(item.visualRoot.gameObject);
-                    // 取消跟随镜头后恢复共享镜头的固定视觉倾角；跟随镜头时
-                    // ApplyArtwork 保持二维编辑平面，不改变图片源和逻辑分支。
-                    item.ApplyArtwork();
+                    NormalizeSourceDimensions(item);
+                    // 显式选择“跟随镜头”时尊重预制体用途，不再按 Surface 强制跳过地面图片。
+                    // 这样已经画好完整 2D 视角的背景、地垫和家具可以采用同一规则：
+                    // 编辑态保持二维平面，运行时由 VisualRoot 统一接管朝向。
                     EditorUtility.SetDirty(item.visualRoot);
                 }
                 PrefabUtility.SaveAsPrefabAsset(root, path);
             }
             finally { PrefabUtility.UnloadPrefabContents(root); }
+        }
+
+        static void MigratePrefabOrSources(string path, bool followCamera)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            var sourcePaths = asset == null ? Array.Empty<string>() : asset
+                .GetComponentsInChildren<PlacementItem>(true)
+                .Select(PlacementPrefabLinks.SourcePath)
+                .Where(p => !string.IsNullOrEmpty(p) && p != path)
+                .Distinct()
+                .ToArray();
+            if (sourcePaths.Length == 0)
+                MigratePrefab(path, followCamera);
+            else
+                foreach (string sourcePath in sourcePaths)
+                    MigratePrefab(sourcePath, followCamera);
         }
 
         static void NormalizeMigratedPrefab(string path, string neutralName, bool normalizeItems)
@@ -339,10 +376,10 @@ namespace Game.Modules.Editor
                             Debug.LogWarning("[ArtworkPrefab] 跳过缺少 Sprite 的旧预制体：" + path);
                             continue;
                         }
-                        if (item.surface == PlacementItem.Surface.Artwork)
-                            AddFacing(item.visualRoot.gameObject);
-                        else
-                            RemoveFacing(item.visualRoot.gameObject);
+                        NormalizeSourceDimensions(item);
+                        // 历史 PlacementSamples 是餐厅 2.5D 世界平面资源。
+                        // 迁移命名和层级时不得顺带改变其呈现模式。
+                        RemoveFacing(item.visualRoot.gameObject);
                         item.ApplyArtwork();
                         EditorUtility.SetDirty(item);
                     }
@@ -368,17 +405,39 @@ namespace Game.Modules.Editor
             }
         }
 
+        static void NormalizeSourceDimensions(PlacementItem item)
+        {
+            if (item.art == null || item.art.sprite == null) return;
+            item.useSourceDimensions = true;
+            item.width = item.art.sprite.bounds.size.x;
+            item.groundDepth = item.art.sprite.bounds.size.y;
+            item.footprint = item.surface == PlacementItem.Surface.Ground
+                ? new Vector2(item.width, item.groundDepth)
+                : new Vector2(item.width, Mathf.Max(.25f, item.width * .5f));
+            item.ApplyArtwork();
+            EditorUtility.SetDirty(item);
+        }
+
         static void SetFacingOnHierarchy(GameObject selected, bool followCamera)
         {
-            foreach (var item in selected.GetComponentsInChildren<PlacementItem>(true))
+            if (EditorApplication.isPlaying)
+                throw new InvalidOperationException("请先退出运行模式再修改预制体。");
+            var items = selected.GetComponentsInChildren<PlacementItem>(true);
+            var sourcePaths = items.Select(PlacementPrefabLinks.SourcePath)
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct()
+                .ToArray();
+            foreach (string sourcePath in sourcePaths)
+                MigratePrefab(sourcePath, followCamera);
+            foreach (var item in items.Where(i => string.IsNullOrEmpty(PlacementPrefabLinks.SourcePath(i))))
             {
-                if (item.surface == PlacementItem.Surface.Artwork && item.visualRoot != null)
-                {
-                    if (followCamera) AddFacing(item.visualRoot.gameObject);
-                    else RemoveFacing(item.visualRoot.gameObject);
-                    item.ApplyArtwork();
-                }
+                if (item.visualRoot == null) continue;
+                if (followCamera) AddFacing(item.visualRoot.gameObject);
+                else RemoveFacing(item.visualRoot.gameObject);
+                item.ApplyArtwork();
             }
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
         }
 
         static void AddFacing(GameObject visualRoot)

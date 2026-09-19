@@ -66,11 +66,6 @@ namespace Game.Modules.Editor
             var nestedFacing = item.visualRoot.GetComponentsInChildren<CameraFacingVisual>(true)
                 .Where(c => c.transform != item.visualRoot).ToArray();
             Check(nestedFacing.Length == 0, "跟随镜头组件只能挂在 VisualRoot，不能放到 Art 或逻辑子节点");
-            if (item.surface == PlacementItem.Surface.Artwork && facing == null)
-            {
-                var expected = world != null && world.view != null ? world.view.Pose(Vector2.zero).Rotation : item.standard.ArtworkRotation(item.xzGround);
-                Check(Quaternion.Angle(item.visualRoot.rotation, expected) < .01f, "父级旋转/坐标体系与模块镜头不一致");
-            }
             if (facing != null)
                 Check(Quaternion.Angle(item.visualRoot.localRotation, Quaternion.identity) < .01f,
                     "跟随镜头物件的 VisualRoot 必须保持二维编辑平面");
@@ -80,8 +75,9 @@ namespace Game.Modules.Editor
             Check(Mathf.Abs(-sortingDepth*100f+item.sorter.orderOffset) < (frame!=null?900:31000),
                 "超出当前排序分区，请由程序设置新的局部排序区域，不要继续扩大同一区域");
             if (facing == null)
-                Check(Quaternion.Angle(item.visualRoot.localRotation, item.ExpectedVisualRotation) < .01f, "视觉倾角与镜头规范不一致，执行应用图片配置");
-            Check(Vector3.Distance(item.visualRoot.localScale, Vector3.one) < .0001f, "VisualRoot 缩放须为 1，尺寸放在 Art 层");
+                Check(Quaternion.Angle(item.visualRoot.localRotation, item.ExpectedVisualRotation) < .01f,
+                    "世界平面视觉角度与二维编排不一致，执行应用图片配置");
+            Check(Vector3.Distance(item.visualRoot.localScale, Vector3.one) < .0001f, "VisualRoot 缩放须为 1");
             Check(item.width > 0 && item.groundDepth > 0 && item.footprint.x > 0 && item.footprint.y > 0, "尺寸/占地必须大于 0");
             Check(item.spriteContact.x >= 0 && item.spriteContact.x <= 1 && item.spriteContact.y >= 0 && item.spriteContact.y <= 1, "图片接地点须在 0..1 范围内");
             Check(Mathf.Abs(Vector3.Dot(item.contact.localPosition, normal)) < .001f, "Contact 必须位于逻辑根节点的地面平面上");
@@ -92,9 +88,17 @@ namespace Game.Modules.Editor
                 Check(Vector3.Distance(item.art.transform.TransformPoint(item.SpriteContactLocal), item.contact.position) < .001f,
                     "图片接地点没有落在 Contact 上");
                 Check(Quaternion.Angle(item.art.transform.localRotation, Quaternion.identity) < .01f, "Art 有额外旋转");
-                float sx = item.width / item.art.sprite.bounds.size.x;
-                float sy = item.surface == PlacementItem.Surface.Ground ? item.groundDepth / item.art.sprite.bounds.size.y : sx;
+                float sx = item.useSourceDimensions ? 1 : item.width / item.art.sprite.bounds.size.x;
+                float sy = item.useSourceDimensions ? 1 : item.surface == PlacementItem.Surface.Ground ? item.groundDepth / item.art.sprite.bounds.size.y : sx;
                 Check(Vector3.Distance(item.art.transform.localScale, new Vector3(sx, sy, 1)) < .001f, "图片尺寸与配置不一致或被额外拉伸");
+                if (item.useSourceDimensions)
+                {
+                    Check(Mathf.Abs(item.width - item.art.sprite.bounds.size.x) < .001f,
+                        "源图尺寸模式的世界宽度必须等于 Sprite 原始宽度");
+                    if (item.surface == PlacementItem.Surface.Ground)
+                        Check(Mathf.Abs(item.groundDepth - item.art.sprite.bounds.size.y) < .001f,
+                            "源图尺寸模式的地面深度必须等于 Sprite 原始高度");
+                }
             }
             Check(item.visualRoot.GetComponentsInChildren<Collider>(true).Length == 0 &&
                 item.visualRoot.GetComponentsInChildren<Collider2D>(true).Length == 0 &&
@@ -123,12 +127,13 @@ namespace Game.Modules.Editor
             }
         }
 
-        public static void UseNativeSize(PlacementItem item)
+        public static void UseStandardSize(PlacementItem item)
         {
             if (item.art == null || item.art.sprite == null) return;
-            Undo.RecordObject(item, "使用原图尺寸");
-            item.width = item.art.sprite.rect.width / item.art.sprite.pixelsPerUnit;
-            item.groundDepth = item.art.sprite.rect.height / item.art.sprite.pixelsPerUnit;
+            Undo.RecordObject(item, "恢复源图原始尺寸");
+            item.useSourceDimensions = true;
+            item.width = item.art.sprite.bounds.size.x;
+            item.groundDepth = item.art.sprite.bounds.size.y;
             ApplyWithUndo(item);
         }
 
@@ -150,7 +155,7 @@ namespace Game.Modules.Editor
         public override void OnInspectorGUI()
         {
             var item = (PlacementItem)target;
-            EditorGUILayout.HelpBox("换图默认采用原图尺寸（像素 / PPU），再点应用。复制保留美术缩放，布局由美术摆放。Physics/Anchors 不随图片改变。", MessageType.Info);
+            EditorGUILayout.HelpBox("源图尺寸模式下 Art 始终为 1，换图后使用 Sprite 导入尺寸。美术只换图和摆根节点，不手调 Transform Scale。Physics/Anchors 不随图片改变。", MessageType.Info);
             string sourcePath=PlacementPrefabLinks.SourcePath(item);
             if(!string.IsNullOrEmpty(sourcePath))
             {
@@ -172,8 +177,8 @@ namespace Game.Modules.Editor
                     Undo.RecordObjects(new UnityEngine.Object[] { item, item.art }, "调整图片配置");
                     if (sprite != item.art.sprite && sprite != null)
                     {
-                        width = sprite.rect.width / sprite.pixelsPerUnit;
-                        depth = sprite.rect.height / sprite.pixelsPerUnit;
+                        width = sprite.bounds.size.x;
+                        depth = sprite.bounds.size.y;
                     }
                     item.art.sprite = sprite; item.width = Mathf.Max(.01f, width); item.groundDepth = Mathf.Max(.01f, depth);
                     item.spriteContact = point; item.footprint = footprint;
@@ -182,7 +187,7 @@ namespace Game.Modules.Editor
                     PrefabUtility.RecordPrefabInstancePropertyModifications(item.art);
                 }
                 if (GUILayout.Button("应用图片配置（不动逻辑/碰撞）")) PlacementTools.ApplyWithUndo(item);
-                if (GUILayout.Button("使用原图尺寸（Art 缩放恢复为 1）")) PlacementTools.UseNativeSize(item);
+            if (GUILayout.Button("恢复源图原始尺寸")) PlacementTools.UseStandardSize(item);
             }
             EditorGUILayout.LabelField("程序预设", item.surface + " / " + (item.xzGround ? "地面平面" : "模块平面"));
             EditorGUILayout.ObjectField("共享镜头规范", item.standard, typeof(WorldViewStandard), false);
@@ -208,7 +213,7 @@ namespace Game.Modules.Editor
     {
         Sprite sprite;
         bool ground, xz;
-        bool nativeSize = true;
+        bool standardSize = true;
         float width = 2, depth = 2;
         GameObject template;
         string message;
@@ -221,8 +226,8 @@ namespace Game.Modules.Editor
             sprite = (Sprite)EditorGUILayout.ObjectField("新图片", sprite, typeof(Sprite), false);
             ground = EditorGUILayout.Toggle("贴地素材", ground);
             xz = EditorGUILayout.Toggle("地面玩法平面", xz);
-            nativeSize = EditorGUILayout.Toggle("新图片保持原图尺寸", nativeSize);
-            using (new EditorGUI.DisabledScope(nativeSize || template != null))
+            standardSize = EditorGUILayout.Toggle("使用源图原始尺寸", standardSize);
+            using (new EditorGUI.DisabledScope(standardSize || template != null))
             {
                 width = EditorGUILayout.FloatField("世界宽度", width);
                 if (ground) depth = EditorGUILayout.FloatField("地面深度", depth);
@@ -256,9 +261,11 @@ namespace Game.Modules.Editor
                     else
                     {
                         if (sprite == null) throw new InvalidOperationException("请选择图片。");
-                        float newWidth = nativeSize ? sprite.rect.width / sprite.pixelsPerUnit : Mathf.Max(.01f, width);
-                        float newDepth = nativeSize ? sprite.rect.height / sprite.pixelsPerUnit : Mathf.Max(.01f, depth);
-                        var item = PlacementTools.Create(sprite, AssetDatabase.LoadAssetAtPath<WorldViewStandard>(PlacementTools.StandardPath), ground, plane, newWidth, newDepth);
+                        var standard = AssetDatabase.LoadAssetAtPath<WorldViewStandard>(PlacementTools.StandardPath);
+                        float newWidth = standardSize ? sprite.bounds.size.x : Mathf.Max(.01f, width);
+                        float newDepth = standardSize ? sprite.bounds.size.y : Mathf.Max(.01f, depth);
+                        var item = PlacementTools.Create(sprite, standard, ground, plane, newWidth, newDepth);
+                        item.useSourceDimensions = standardSize;
                         go = item.gameObject; Undo.RegisterCreatedObjectUndo(go, "创建标准物件");
                         go.transform.SetParent(parent, false);
                         item.sorter.frame = null;

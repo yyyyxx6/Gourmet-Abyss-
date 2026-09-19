@@ -1,21 +1,9 @@
-# 图片与原尺寸交接
+# 树草图片交接说明
 
-## 使用 SpriteRenderer
+树、草、桌椅属于场景图片，使用 SpriteRenderer。PNG 只需导入成 `Sprite (2D and UI)`；这里的“Image”是旧节点名，不代表 Canvas 的 UI Image。
 
-树、草、桌椅是场景中的二维美术，使用 SpriteRenderer 合理。`Image` 在本目录只是显示节点名称，不是 Canvas 的 UI Image 组件。文件继续保留透明 PNG；`Sprite (2D and UI)` 是 Unity 导入类型，不是文件格式转换。
+美术保留原 PNG 的像素、透明留白和比例。项目通过 `WorldViewStandard.artworkScale` 把 Sprite 尺寸统一换算到世界尺寸，右键创建预制体和换图工具会自动应用，美术不手调 Transform Scale。
 
-## 原尺寸
+运行时由 `CameraFacingVisual` 旋转各预制体的 `VisualRoot` 面向镜头；编辑时 `VisualRoot` 和 `Art` 保持零旋转，美术按普通二维效果图摆放预制体根节点。需要 2.5D 透视的完整场景保持世界平面，不挂跟随镜头组件。
 
-原尺寸指：`Sprite 矩形像素 / Pixels Per Unit`，Transform Scale=1。它不是“一个图片像素必定等于一个屏幕像素”；透视镜头、距离、Game 窗口缩放和屏幕分辨率仍会影响清晰度。
-
-餐厅座位图为 157×118，PPU=100，对应 1.57×1.18 世界单位。旧工具把宽度设为 0.95，会得到约 0.605 的缩放。当前单椅图片已由美术改回 Scale=1，这次只把单椅预制体的尺寸记录同步到实际缩放，保留所有位置、角度、占地和业务锚点。
-
-现有 `Tools > Modules > Placement > Authoring` 新建图片默认保持原尺寸；复制已有模板保留已调好的图片缩放。PlacementItem 换图片后默认采用新图的原尺寸，再点击应用。`使用原图尺寸` 按钮只供主动重置，不会每帧改动美术布局。
-
-## 清晰度
-
-像素风使用 Point、关闭 Mipmap 和纹理压缩，避免导入时缩小。PNG 副本已经按此设置。餐厅原图导入、相机参数和现有场景布局没有批量改动。透视 2.5D 不宜直接加正交 Pixel Perfect Camera：它会改变当前镜头表现；清晰度仍需在游戏实际视角和目标分辨率下查看。
-
-## 大量摆放
-
-先复制预制体、换 Sprite，再由美术摆放；不同图不要为了铺满占位框而强行统一宽度。需要沿地面铺设连续地表时另用 Tilemap，树草单株继续使用 SpriteRenderer。
+新树草从原 Sprite 右键 **场景物件 → 创建场景物件预制体**，选择“跟随镜头”和统一目录。不要复制示例 PNG，也不要创建 `_XY`、`_XZ` 资源。大量连续地表使用 Tilemap；单株和组合继续使用标准场景物件预制体。

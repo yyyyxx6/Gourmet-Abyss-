@@ -34,6 +34,8 @@ namespace Game.Modules.Editor
                 {
                     Require(item.standard==Standard,"Sample standard mismatch");
                     Require(item.sorter.frame==null,"Standalone sample has external scene/frame reference");
+                    Require(item.useSourceDimensions && item.art.transform.localScale == Vector3.one,
+                        "Sample 的 Art 必须保持源图尺寸和 1 倍缩放: "+item.name);
                 }
                 count++;
             }
@@ -43,6 +45,18 @@ namespace Game.Modules.Editor
                 .Where(p=>p.EndsWith("_XY.prefab",StringComparison.OrdinalIgnoreCase)||p.EndsWith("_XZ.prefab",StringComparison.OrdinalIgnoreCase))
                 .ToArray();
             Require(legacy.Length==0,"Legacy XY/XZ prefab variants remain: "+string.Join(", ",legacy));
+
+            foreach(string path in new[]{
+                "Assets/Environment/Vegetation/Prototype/Prefabs/Vegetation_Single_Tree.prefab",
+                "Assets/Environment/Vegetation/Prototype/Prefabs/Vegetation_Single_Grass.prefab"})
+            {
+                var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                PlacementTools.ValidateTree(prefab);
+                var item=prefab.GetComponent<PlacementItem>();
+                Require(item!=null&&item.UsesCameraFacingVisual,"Vegetation sample does not follow camera: "+path);
+                Require(AssetDatabase.GetAssetPath(item.art.sprite).StartsWith("Assets/NewVersion/map/",StringComparison.Ordinal),
+                    "Vegetation sample must reference the original art Sprite: "+path);
+            }
         }
 
         public static void ContactAndLogicIsolationXY() => ContactAndLogicIsolation(false);
@@ -74,7 +88,7 @@ namespace Game.Modules.Editor
                 var anchor=PlacementTools.Child(item.anchorsRoot,"Interact");anchor.localPosition=new Vector3(.7f,.2f,.5f);
                 var physics=PlacementTools.Child(item.physicsRoot,"Collision");var collider=physics.gameObject.AddComponent<BoxCollider>();collider.size=new Vector3(2,1,1);
                 var rootPosition=item.transform.position;var anchorPosition=anchor.position;var colliderSize=collider.size;
-                item.spriteContact=new Vector2(.4f,.1f);item.width=3;item.ApplyArtwork();
+                item.spriteContact=new Vector2(.4f,.1f);item.useSourceDimensions=false;item.width=3;item.ApplyArtwork();
                 Require(Vector3.Distance(item.art.transform.TransformPoint(item.SpriteContactLocal),item.contact.position)<.0001f,"Contact differs from actual sprite point.");
                 Require(item.transform.position==rootPosition && anchor.position==anchorPosition && collider.size==colliderSize,"Applying art changed gameplay.");
                 item.sorter.Refresh();int order=item.sorter.visual.sortingOrder;
@@ -102,7 +116,7 @@ namespace Game.Modules.Editor
                 Require(PlacementTools.Validate(item).Any(e=>e.Contains("碰撞")),"Visual collider was not rejected.");
                 Object.DestroyImmediate(collider);
                 item.visualRoot.localRotation=Quaternion.Euler(15,0,0);
-                Require(PlacementTools.Validate(item).Any(e=>e.Contains("二维编辑平面")),"Bad camera-facing visual angle was not rejected.");
+                Require(PlacementTools.Validate(item).Any(e=>e.Contains("视觉角度")),"Bad world-plane visual angle was not rejected.");
                 item.ApplyArtwork();PlacementTools.ValidateTree(go);
             }
             finally {Object.DestroyImmediate(go);}
@@ -149,6 +163,7 @@ namespace Game.Modules.Editor
                         var so=new SerializedObject(facing);so.FindProperty("targetCamera").objectReferenceValue=camera;
                         so.ApplyModifiedPropertiesWithoutUndo();facing.AlignToCamera();
                     }
+                    bool observedWorldPlanePerspective=false;
                     foreach(float aspect in new[]{4f/3,16f/9,21f/9})
                     {
                         // A screen-backed Camera clamps pixelRect to the current Game view. Use a real
@@ -164,16 +179,27 @@ namespace Game.Modules.Editor
                             foreach(float depth in new[]{-5f,0,5f}) foreach(float x in new[]{-8f,0,8f})
                             {
                                 go.transform.position=xz?new Vector3(x,0,depth):new Vector3(x,depth,0);
-                                try { ModuleSupplementalChecks.CheckArtworkProjection(camera,new[]{item.sorter}); }
-                                catch(Exception e) { throw new InvalidOperationException($"XZ={xz}, aspect={aspect}, pan={pan}, x={x}, depth={depth}: {e.Message}"); }
                                 var b=item.art.sprite.bounds;var t=item.art.transform;
-                                float width=Vector2.Distance(camera.WorldToScreenPoint(t.TransformPoint(b.min)),camera.WorldToScreenPoint(t.TransformPoint(new Vector3(b.max.x,b.min.y,0))));
+                                var bl=camera.WorldToScreenPoint(t.TransformPoint(b.min));
+                                var br=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(b.max.x,b.min.y,0)));
+                                var tl=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(b.min.x,b.max.y,0)));
+                                var tr=camera.WorldToScreenPoint(t.TransformPoint(b.max));
+                                if(facing!=null)
+                                {
+                                    try { ModuleSupplementalChecks.CheckArtworkProjection(camera,new[]{item.sorter}); }
+                                    catch(Exception e) { throw new InvalidOperationException($"XZ={xz}, aspect={aspect}, pan={pan}, x={x}, depth={depth}: {e.Message}"); }
+                                }
+                                else if(Mathf.Abs(Vector2.Distance(bl,br)-Vector2.Distance(tl,tr))>.02f)
+                                    observedWorldPlanePerspective=true;
+                                float width=Vector2.Distance(bl,br);
                                 if(x==0&&depth==-5)nearWidth=width;
                                 if(x==0&&depth==5)farWidth=width;
                             }
                             Require(nearWidth>farWidth,"Perspective did not make near artwork larger.");
                         }
                     }
+                    if(facing==null)
+                        Require(observedWorldPlanePerspective,"World-plane artwork did not show perspective depth.");
                 }
                 finally {Object.DestroyImmediate(go);Object.DestroyImmediate(cameraGO);if(target!=null)Object.DestroyImmediate(target);}
             }
@@ -186,7 +212,7 @@ namespace Game.Modules.Editor
             try
             {
                 var ia=a.GetComponentInChildren<PlacementItem>();var ib=b.GetComponentInChildren<PlacementItem>();
-                float original=ib.width;ia.width*=1.2f;ia.ApplyArtwork();
+                float original=ib.width;ia.useSourceDimensions=false;ia.width*=1.2f;ia.ApplyArtwork();
                 Require(ib.width==original,"Editing instance changed sibling.");
                 a.transform.position+=new Vector3(3,2,0);
                 PlacementTools.ValidateTree(a);PlacementTools.ValidateTree(b);

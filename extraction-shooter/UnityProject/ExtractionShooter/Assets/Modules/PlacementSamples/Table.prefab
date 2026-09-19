@@ -58,9 +58,10 @@ MonoBehaviour:
   anchorsRoot: {fileID: 8395405268370437940}
   sorter: {fileID: 6838428994659541740}
   spriteContact: {x: 0.5, y: 0}
-  width: 1.7
-  groundDepth: 3.289531
-  footprint: {x: 1.7, y: 0.85}
+  width: 2.77
+  groundDepth: 5.36
+  footprint: {x: 2.77, y: 1.385}
+  useSourceDimensions: 1
 --- !u!1 &4395903066197563596
 GameObject:
   m_ObjectHideFlags: 0
@@ -89,7 +90,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: -0, y: -0, z: -0}
-  m_LocalScale: {x: 0.61371845, y: 0.61371845, z: 1}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 8050435059770116710}
@@ -135,7 +136,7 @@ SpriteRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Sprite: {fileID: 21300000, guid: d3d802aa0e518b44e8373c4ce48a4f4f, type: 2}
+  m_Sprite: {fileID: 21300000, guid: b5d958d370da9574684b59f8dbb776c7, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -206,7 +207,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8050435059770116710}
-  - component: {fileID: 5275574927846533539}
   m_Layer: 0
   m_Name: VisualRoot
   m_TagString: Untagged
@@ -230,22 +230,6 @@ Transform:
   - {fileID: 9219341883307649786}
   m_Father: {fileID: 4673318994591874667}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &5275574927846533539
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7529916527833247671}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7bd6d369c9df357458de7a959bd303c3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  targetCamera: {fileID: 0}
-  updateMode: 1
-  reverseForward: 0
-  additionalEulerAngles: {x: 0, y: 0, z: 0}
 --- !u!1 &8112853841688898087
 GameObject:
   m_ObjectHideFlags: 0

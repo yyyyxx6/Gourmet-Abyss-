@@ -10,7 +10,7 @@ namespace GourmetAbyss.CameraSystem.Tests
     public sealed class PlanarSpritePlacementTests
     {
         [Test]
-        public void RestaurantPrefab_PreservesArtworkShapeInFixedPerspectiveView()
+        public void RestaurantPrefab_UsesWorldPlaneForTwoPointFiveDPresentation()
         {
             var prefabAsset = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Modules/Restaurant/RestaurantWorld.prefab");
             Assert.IsNotNull(prefabAsset);
@@ -23,22 +23,33 @@ namespace GourmetAbyss.CameraSystem.Tests
             Assert.AreEqual(6, artwork.Count(s=>((Component)s).GetComponentInParent(itemType).name=="Table"));
             Assert.AreEqual(2, artwork.Count(s=>((Component)s).GetComponentInParent(itemType).name.StartsWith("Stove")));
             var view=prefab.GetComponent<PlanarPerspectiveView>();
+            var placementItems=prefab.GetComponentsInChildren(itemType,true).Cast<Component>().ToArray();
+            Assert.AreEqual(42,placementItems.Length);
+            Assert.IsEmpty(prefab.GetComponentsInChildren<CameraFacingVisual>(true),
+                "餐厅保持 2.5D 世界平面，不应挂 CameraFacingVisual");
+            Assert.IsFalse(prefab.GetComponentsInChildren<MonoBehaviour>(true)
+                .Any(component=>component!=null&&component.GetType().Name=="CameraFacingLayout"),
+                "餐厅保持 2.5D 世界平面，不应挂 CameraFacingLayout");
+            Assert.IsTrue(placementItems.All(item=>
+            {
+                var visualRoot=(Transform)itemType.GetField("visualRoot").GetValue(item);
+                var expected=(Quaternion)itemType.GetProperty("ExpectedVisualRotation").GetValue(item);
+                return visualRoot!=null&&Quaternion.Angle(visualRoot.localRotation,expected)<.001f;
+            }),"餐厅物件没有保持美术二维编排平面");
+            var surroundingVisual=prefab.transform.Find("VisualRoot/SurroundingGround/VisualRoot");
+            Assert.IsNotNull(surroundingVisual,"餐厅外圈背景缺少标准视觉节点");
+            Assert.IsNull(surroundingVisual.GetComponent<CameraFacingVisual>(),
+                "餐厅外圈背景不应跟随镜头");
             var cameraGO=new GameObject("Artwork projection test");
             try
             {
                 var camera=cameraGO.AddComponent<Camera>();camera.orthographic=false;
                 camera.pixelRect=new Rect(0,0,1920,1080);camera.aspect=1920f/1080;
+                bool observedPerspective=false;
                 foreach(var pan in new[]{Vector2.zero,Vector2.right*1.5f,Vector2.up*1.5f})
                 {
                     var pose=view.Pose(pan);camera.fieldOfView=pose.FieldOfView;
                     camera.transform.SetPositionAndRotation(pose.Position,pose.Rotation);
-                    foreach (var facing in prefab.GetComponentsInChildren<CameraFacingVisual>(true))
-                    {
-                        var serialized = new SerializedObject(facing);
-                        serialized.FindProperty("targetCamera").objectReferenceValue = camera;
-                        serialized.ApplyModifiedPropertiesWithoutUndo();
-                        facing.AlignToCamera();
-                    }
                     foreach(var item in artwork)
                     {
                         var visual=(SpriteRenderer)type.GetField("visual").GetValue(item);
@@ -47,13 +58,13 @@ namespace GourmetAbyss.CameraSystem.Tests
                         var br=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(bounds.max.x,bounds.min.y,0)));
                         var tl=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(bounds.min.x,bounds.max.y,0)));
                         var tr=camera.WorldToScreenPoint(t.TransformPoint(new Vector3(bounds.max.x,bounds.max.y,0)));
-                        Assert.That(Mathf.Abs(br.y-bl.y),Is.LessThan(.02f),item.name+" horizontal edge skewed");
-                        Assert.That(Mathf.Abs(tl.x-bl.x),Is.LessThan(.02f),item.name+" vertical edge skewed");
-                        Assert.That(Mathf.Abs(Vector2.Distance(bl,br)-Vector2.Distance(tl,tr)),Is.LessThan(.02f),item.name+" became trapezoid");
-                        float expected=bounds.size.x*t.lossyScale.x/(bounds.size.y*t.lossyScale.y);
-                        Assert.That(Vector2.Distance(bl,br)/Vector2.Distance(bl,tl),Is.EqualTo(expected).Within(.001f),item.name+" artwork aspect changed");
+                        Assert.That(Mathf.Min(Mathf.Min(bl.z,br.z),Mathf.Min(tl.z,tr.z)),Is.GreaterThan(0f),
+                            item.name+" projected behind the camera");
+                        if(Mathf.Abs(Vector2.Distance(bl,br)-Vector2.Distance(tl,tr))>.02f)
+                            observedPerspective=true;
                     }
                 }
+                Assert.IsTrue(observedPerspective,"透视相机没有在餐厅世界平面上产生 2.5D 纵深效果");
             }
             finally
             {

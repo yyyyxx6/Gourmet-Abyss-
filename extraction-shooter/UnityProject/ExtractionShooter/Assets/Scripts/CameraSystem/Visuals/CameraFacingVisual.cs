@@ -21,7 +21,6 @@ namespace GourmetAbyss.CameraSystem
         [Tooltip("部分 Sprite/Quad 的正面法线相反时启用")]
         [SerializeField] private bool reverseForward;
         [SerializeField] private Vector3 additionalEulerAngles;
-
         private void OnEnable()
         {
             AlignToCamera();
@@ -40,10 +39,21 @@ namespace GourmetAbyss.CameraSystem
             if (targetCamera == null)
                 return;
 
-            Quaternion cameraRotation = targetCamera.transform.rotation;
+            transform.rotation = RotationFor(targetCamera);
+        }
+
+        /// <summary>
+        /// 返回指定镜头下应使用的视觉朝向。编辑器 Scene 预览复用这段计算，
+        /// 保证未运行和运行时不会各维护一套角度规则。
+        /// </summary>
+        public Quaternion RotationFor(Camera camera)
+        {
+            if (camera == null)
+                return transform.rotation;
+            Quaternion cameraRotation = camera.transform.rotation;
             if (reverseForward)
                 cameraRotation *= Quaternion.Euler(0f, 180f, 0f);
-            transform.rotation = cameraRotation * Quaternion.Euler(additionalEulerAngles);
+            return cameraRotation * Quaternion.Euler(additionalEulerAngles);
         }
 
 #if UNITY_EDITOR
