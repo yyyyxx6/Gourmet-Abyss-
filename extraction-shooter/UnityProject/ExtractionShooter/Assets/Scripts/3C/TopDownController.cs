@@ -122,6 +122,7 @@ public class TopDownController : MonoBehaviour
     [Header("组件引用")]
     [SerializeField] private Camera mainCamera;
     [SerializeField] private Animator animator;
+    public Animator DeathAnimator => animator;
 
     [Header("饥饿/氧气受伤害反馈")]
     [Tooltip("为空则从 mainCamera 上取 CameraFollow")]

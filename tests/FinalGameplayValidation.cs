@@ -35,6 +35,7 @@ public static class FinalGameplayValidation
     private static int firstLayer3Handle;
     private static bool injectingSwitchSnapshotFailure;
     private static bool observedSwitchSnapshotFailure;
+    private static GameplayDeathPresentationProbe deathPresentation;
 
     static FinalGameplayValidation()
     {
@@ -83,6 +84,7 @@ public static class FinalGameplayValidation
         {
             Check(string.IsNullOrEmpty(SessionState.GetString(ErrorKey, "")), "Unexpected runtime error: " + SessionState.GetString(ErrorKey, ""));
             Check(EditorApplication.timeSinceStartup <= ReadTime(DeadlineKey), "Timed out during " + phase);
+            if (EditorApplication.isPlaying && deathPresentation != null) deathPresentation.Observe();
             if (!EditorApplication.isPlaying || EditorApplication.timeSinceStartup < ReadTime(ReadyKey)) return;
             switch (phase)
             {
@@ -91,7 +93,7 @@ public static class FinalGameplayValidation
                 case "layer3-first": if (IsLevelReady()) ValidateSwitchFailureAndStart(); break;
                 case "switch-layer2": if (IsLevelReady(SwitchLevelName)) ValidateLayer2AndSwitchBack(); break;
                 case "switch-layer3": if (IsLevelReady()) ValidateSwitchReturnAndContinue(); break;
-                case "death-visible": if (View().canvasGroup.alpha >= 0.99f) ValidateDeathPresentationAndRetry(); break;
+                case "death-visible": if (deathPresentation != null && deathPresentation.ReadyForButtons) ValidateDeathPresentationAndRetry(); break;
                 case "layer3-retry": if (IsLevelReady()) RecoverAndExtract(); break;
                 case "extraction-visible": if (View().canvasGroup.alpha >= 0.99f) ValidateSecondResultAndReturn(); break;
                 case "home": if (IsHomeReady()) ValidateHome(); break;
@@ -102,6 +104,7 @@ public static class FinalGameplayValidation
 
     private static void Prepare()
     {
+        if (!GameplaySceneValidation.IsCameraFrameReady(SceneManager.GetSceneByName("UpGround"))) return;
         Check(InventoryManager.instance != null && WeaponStatsManager.Instance != null && RestaurantPanel.instance != null &&
             GameValManager.Instance != null && RunSessionManager.Instance != null, "The real home scene must provide all regression dependencies.");
         GameplaySceneValidation.CaptureHomeState();
@@ -156,6 +159,7 @@ public static class FinalGameplayValidation
                 Check(overlapWidth <= 0.5f || overlapHeight <= 0.5f, "Expanded inventory cells must not overlap.");
             }
         }
+        CheckInventoryScrollReachability(view, entries);
         Check(!view.petSection.activeSelf && !view.recipeSection.activeSelf && !view.gatheredSection.activeSelf,
             "Empty reward categories must remain hidden in every inventory layout.");
         CheckIndependentInput(view);
@@ -322,8 +326,7 @@ public static class FinalGameplayValidation
         Check(InventoryManager.instance.AddRunGathered(Wood, 11) == 11, "The death presentation has eleven gathered wood units.");
         TopDownController player = FindPlayer();
         MovePlayer(player, player.transform.position + Vector3.right * 10f);
-        player.Die();
-        CheckSettlementState();
+        deathPresentation = GameplayDeathPresentationProbe.Begin(player);
         Check(InventoryManager.instance.GetItemCount(Food) == 1 && RunSessionManager.Instance.LastResult.IngredientDelta == -3,
             "Layer3 death applies ten-percent retention to the four carried food units.");
         deathRecord = RunSessionManager.Instance.PendingDeathCrate;
@@ -334,13 +337,15 @@ public static class FinalGameplayValidation
             CountPet(RunSessionManager.Instance.LastResult.NewPetTypes, PetType.FlyingCompanion) == 1,
             "Death settlement preserves each new unlock exactly once.");
         beforePresentation = InventoryManager.instance.CaptureInventory();
-        SetPhase("death-visible", 10, 0.3);
+        SetPhase("death-visible", 10);
     }
 
     private static void ValidateDeathPresentationAndRetry()
     {
         SettlementUIController view = View();
         CheckSettlementState();
+        Check(deathPresentation != null && deathPresentation.IsComplete, "The real death animation must finish before rendering checks or retry.");
+        deathPresentation = null;
         CheckSameInventory(beforePresentation, InventoryManager.instance.CaptureInventory());
         CheckIndependentInput(view);
         FieldInfo catalog = typeof(SettlementUIController).GetField("presentationCatalog", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -515,6 +520,44 @@ public static class FinalGameplayValidation
         return Rect.MinMaxRect(corners[0].x, corners[0].y, corners[2].x, corners[2].y);
     }
 
+    private static void CheckInventoryScrollReachability(SettlementUIController view, List<RectTransform> entries)
+    {
+        ScrollRect scroll = view.inventoryScroll;
+        Check(scroll != null && scroll.content == view.inventoryContent && scroll.viewport != null,
+            "Every owned inventory slot must belong to the real inventory scroll content.");
+        if (entries.Count == 0) return;
+        scroll.StopMovement();
+        scroll.verticalNormalizedPosition = 1f;
+        Canvas.ForceUpdateCanvases();
+        for (int index = 1; index < entries.Count; index++)
+        {
+            Rect previous = WorldBounds(entries[index - 1]);
+            Rect current = WorldBounds(entries[index]);
+            Check(Mathf.Abs(previous.center.x - current.center.x) <= 0.5f && current.center.y < previous.center.y,
+                "The authored backpack must arrange its owned slots in a single vertical column.");
+        }
+        float travel = Mathf.Max(0f, scroll.content.rect.height - scroll.viewport.rect.height);
+        Check(travel <= 0.01f || scroll.vertical, "Slots beyond the viewport must remain reachable by vertical scrolling.");
+        foreach (RectTransform entry in entries)
+        {
+            if (travel > 0.01f)
+            {
+                Bounds relative = RectTransformUtility.CalculateRelativeRectTransformBounds(scroll.viewport, entry);
+                float shift = scroll.viewport.rect.center.y - relative.center.y;
+                scroll.verticalNormalizedPosition = Mathf.Clamp01(scroll.verticalNormalizedPosition - shift / travel);
+                Canvas.ForceUpdateCanvases();
+            }
+            Rect cell = WorldBounds(entry);
+            Rect viewport = WorldBounds(scroll.viewport);
+            Check(cell.xMin >= viewport.xMin - 1f && cell.xMax <= viewport.xMax + 1f &&
+                cell.yMin >= viewport.yMin - 1f && cell.yMax <= viewport.yMax + 1f,
+                "Every owned slot, including the last one after expansion, must be fully reachable inside the scroll viewport.");
+        }
+        scroll.verticalNormalizedPosition = 1f;
+        Canvas.ForceUpdateCanvases();
+        CheckSameInventory(beforePresentation, InventoryManager.instance.CaptureInventory());
+    }
+
     private static void CheckSameInventory(InventorySnapshot expected, InventorySnapshot actual)
     {
         Check(expected.Slots.Count == actual.Slots.Count, "Presentation cannot change unlocked slot count.");
@@ -560,7 +603,13 @@ public static class FinalGameplayValidation
         bool ready = scene.IsValid() && scene.isLoaded && LevelManager.instance != null && !LevelManager.instance.IsTransitioning() &&
             LevelManager.instance.CurrentLevelId == level && RunSessionManager.Instance != null && RunSessionManager.Instance.IsActive &&
             RunSessionManager.Instance.Phase == RunEndPhase.Exploring && FindPlayer(level) != null && Time.timeScale > 0f;
-        if (!ready || !GameplaySceneValidation.IsCameraFrameReady(scene)) return false;
+        if (!ready) return false;
+        // This fixture observes HUD entrance and explicit death requests; random attacks
+        // must not kill the stationary test player while waiting for the UI animation.
+        foreach (GameObject root in scene.GetRootGameObjects())
+            foreach (EnemyAI enemy in root.GetComponentsInChildren<EnemyAI>(true))
+                enemy.enabled = false;
+        if (!GameplaySceneValidation.IsCameraFrameReady(scene)) return false;
         GameplaySceneValidation.CheckSceneBindings(scene);
         return true;
     }

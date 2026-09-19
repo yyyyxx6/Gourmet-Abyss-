@@ -17,6 +17,7 @@ public sealed class SettlementUIController : MonoBehaviour
     public RectTransform inventoryContent;
     public RectTransform inventorySlotTemplate;
     public ScrollRect inventoryScroll;
+    public RectTransform inventoryFooter;
     public GameObject petSection;
     public RectTransform petContent;
     public GameObject recipeSection;
@@ -123,7 +124,7 @@ public sealed class SettlementUIController : MonoBehaviour
         SetStatusMessage(string.Empty);
         titleText.text = reason == RunEndReason.Death ? "\u5192\u9669\u7ed3\u675f" : "\u6210\u529f\u64a4\u79bb";
         titleText.color = reason == RunEndReason.Death
-            ? new Color32(135, 49, 49, 255) : new Color32(39, 77, 58, 255);
+            ? new Color32(255, 202, 179, 255) : new Color32(248, 235, 195, 255);
 
         ConfigureInventoryLayout(result.Inventory.Slots.Count);
         int occupied = 0;
@@ -153,7 +154,7 @@ public sealed class SettlementUIController : MonoBehaviour
             count.text = slot.Count.ToString(CultureInfo.InvariantCulture);
             count.gameObject.SetActive(true);
         }
-        inventorySummaryText.text = occupied + " / " + result.Inventory.Slots.Count;
+        inventorySummaryText.text = "\u80cc\u5305 " + occupied + " / " + result.Inventory.Slots.Count;
 
         petSection.SetActive(result.NewPetTypes.Count > 0);
         foreach (PetType pet in result.NewPetTypes)
@@ -207,7 +208,7 @@ public sealed class SettlementUIController : MonoBehaviour
             ? "+" + result.IngredientDelta.ToString(CultureInfo.InvariantCulture)
             : result.IngredientDelta.ToString(CultureInfo.InvariantCulture);
         ingredientDeltaText.color = result.IngredientDelta < 0
-            ? new Color32(171, 46, 46, 255) : new Color32(39, 77, 58, 255);
+            ? new Color32(255, 166, 151, 255) : new Color32(248, 235, 195, 255);
         durationText.text = FormatDuration(result.ElapsedSeconds);
         killsText.text = result.KillCount.ToString(CultureInfo.InvariantCulture);
 
@@ -346,15 +347,15 @@ public sealed class SettlementUIController : MonoBehaviour
         layout.preferredHeight = height;
         Image icon = row.Find("Icon").GetComponent<Image>();
         icon.sprite = sprite;
-        icon.color = sprite != null ? Color.white : new Color32(132, 111, 76, 60);
-        icon.rectTransform.anchoredPosition = new Vector2(34f, hasOutcome ? 10f : 0f);
+        icon.color = sprite != null ? Color.white : new Color32(220, 217, 174, 50);
+        icon.rectTransform.anchoredPosition = new Vector2(38f, hasOutcome ? 10f : 0f);
         Text placeholder = icon.transform.Find("Placeholder").GetComponent<Text>();
         placeholder.text = string.IsNullOrEmpty(name) ? "\u7269" : name.Substring(0, 1);
         placeholder.gameObject.SetActive(sprite == null);
         Text nameText = row.Find("Name").GetComponent<Text>();
         nameText.text = name;
-        nameText.rectTransform.offsetMin = new Vector2(80f, hasOutcome ? 32f : 8f);
-        nameText.rectTransform.offsetMax = new Vector2(isNew ? -12f : -218f, -8f);
+        nameText.rectTransform.offsetMin = new Vector2(88f, hasOutcome ? 32f : 8f);
+        nameText.rectTransform.offsetMax = new Vector2(isNew ? -12f : -270f, -8f);
         row.Find("Gain").GetComponent<Text>().text = gained;
         row.Find("Total").GetComponent<Text>().text = total;
         Text outcomeText = row.Find("Outcome").GetComponent<Text>();
@@ -369,12 +370,21 @@ public sealed class SettlementUIController : MonoBehaviour
     {
         GridLayoutGroup grid = inventoryContent.GetComponent<GridLayoutGroup>();
         if (grid == null) return;
-        int columns = slotCount <= 1 ? 1 : slotCount <= 4 ? 2 : slotCount <= 9 ? 3 : 4;
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        grid.constraintCount = columns;
+        grid.constraintCount = 1;
         grid.childAlignment = TextAnchor.UpperCenter;
-        grid.cellSize = slotCount <= 4 ? new Vector2(160f, 164f)
-            : slotCount <= 6 ? new Vector2(144f, 148f) : new Vector2(124f, 128f);
+        grid.cellSize = new Vector2(235f, 130f);
+        grid.spacing = Vector2.zero;
+        grid.padding = new RectOffset();
+        float visibleHeight = Mathf.Clamp(slotCount, 1, 4) * grid.cellSize.y;
+        RectTransform scroll = inventoryScroll.GetComponent<RectTransform>();
+        scroll.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, visibleHeight);
+        if (inventoryFooter != null)
+        {
+            inventoryFooter.anchoredPosition = new Vector2(scroll.anchoredPosition.x, scroll.anchoredPosition.y - visibleHeight);
+            inventorySummaryText.rectTransform.anchoredPosition = new Vector2(scroll.anchoredPosition.x,
+                inventoryFooter.anchoredPosition.y - inventoryFooter.rect.height - 6f);
+        }
     }
 
     private static ResourceItem GetResourceInfo(ResourceType type)

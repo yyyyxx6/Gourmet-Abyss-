@@ -5,9 +5,19 @@
             "width": 1920,
             "height": 1080,
             "scaleFactor": 1.0,
-            "pngBytes": 148511,
+            "pngBytes": 366047,
             "slotCount": 12,
             "ingredientIconCount": 5,
+            "bagScrolledToBottom": false,
+            "formalArtwork": [
+                "Assets/Resources/UI/SettlementArt/Textures/结算底板.png",
+                "Assets/Resources/UI/SettlementArt/Textures/结算标题.png",
+                "Assets/Resources/UI/SettlementArt/Textures/背包.png",
+                "Assets/Resources/UI/SettlementArt/Textures/获取物展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/文本展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/按键.png",
+                "Assets/Resources/UI/SettlementArt/Textures/装饰.png"
+            ],
             "newMarkerCount": 2,
             "petIconPath": "Assets/Resources/UI/SettlementIcons/FlyingCompanion.png",
             "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
@@ -19,79 +29,184 @@
                 "新菜谱",
                 "采集物"
             ],
-            "headerInkPixels": 2657,
-            "foregroundFraction": 0.6365311741828919,
-            "quantizedColors": 827,
+            "headerInkPixels": 3364,
+            "foregroundFraction": 0.545085072517395,
+            "quantizedColors": 1240,
             "rects": [
                 {
                     "name": "Panel",
-                    "x": 189.99996948242188,
-                    "y": 59.999996185302737,
-                    "width": 1540.0,
-                    "height": 960.0
+                    "x": 159.99996948242188,
+                    "y": 40.00000762939453,
+                    "width": 1600.0,
+                    "height": 1000.0
                 },
                 {
                     "name": "Title",
-                    "x": 355.20001220703127,
-                    "y": 829.2000122070313,
-                    "width": 1080.0,
-                    "height": 62.99993896484375
+                    "x": 757.0,
+                    "y": 839.0,
+                    "width": 706.0001220703125,
+                    "height": 76.0
                 },
                 {
                     "name": "InventoryViewport",
-                    "x": 357.0,
-                    "y": 314.4000244140625,
-                    "width": 505.79998779296877,
-                    "height": 413.99993896484377
+                    "x": 211.99996948242188,
+                    "y": 204.00001525878907,
+                    "width": 235.00003051757813,
+                    "height": 519.9999389648438
                 },
                 {
                     "name": "DetailsViewport",
-                    "x": 956.3999633789063,
-                    "y": 422.4000244140625,
-                    "width": 586.7999877929688,
-                    "height": 360.0
+                    "x": 560.0,
+                    "y": 398.0,
+                    "width": 1082.0,
+                    "height": 410.0
                 },
                 {
                     "name": "Statistics",
-                    "x": 956.3999633789063,
-                    "y": 287.4000244140625,
-                    "width": 586.7999877929688,
-                    "height": 118.79998779296875
+                    "x": 560.0,
+                    "y": 232.0,
+                    "width": 1100.0001220703125,
+                    "height": 156.0
                 },
                 {
                     "name": "IngredientDelta",
-                    "x": 1343.39990234375,
-                    "y": 364.8000183105469,
-                    "width": 198.0,
-                    "height": 43.199981689453128
+                    "x": 1353.0,
+                    "y": 340.0,
+                    "width": 280.0,
+                    "height": 48.0
                 },
                 {
                     "name": "Duration",
-                    "x": 1343.39990234375,
-                    "y": 325.20001220703127,
-                    "width": 198.0,
-                    "height": 43.20001220703125
+                    "x": 1353.0,
+                    "y": 286.0,
+                    "width": 280.0,
+                    "height": 48.0
                 },
                 {
                     "name": "Kills",
-                    "x": 1343.39990234375,
-                    "y": 285.60003662109377,
-                    "width": 198.0,
-                    "height": 43.199981689453128
+                    "x": 1353.0,
+                    "y": 232.0,
+                    "width": 280.0,
+                    "height": 48.000030517578128
                 },
                 {
                     "name": "Retry",
-                    "x": 969.0,
-                    "y": 178.5,
-                    "width": 279.0,
-                    "height": 63.0
+                    "x": 564.9999389648438,
+                    "y": 78.00001525878906,
+                    "width": 480.00006103515627,
+                    "height": 87.0
                 },
                 {
                     "name": "Home",
-                    "x": 1284.0,
-                    "y": 178.5,
-                    "width": 279.0,
-                    "height": 63.0
+                    "x": 1175.0,
+                    "y": 78.00001525878906,
+                    "width": 480.0,
+                    "height": 87.0
+                }
+            ]
+        },
+        {
+            "name": "settlement-bag-bottom-1920x1080",
+            "width": 1920,
+            "height": 1080,
+            "scaleFactor": 1.0,
+            "pngBytes": 358482,
+            "slotCount": 12,
+            "ingredientIconCount": 5,
+            "bagScrolledToBottom": true,
+            "formalArtwork": [
+                "Assets/Resources/UI/SettlementArt/Textures/结算底板.png",
+                "Assets/Resources/UI/SettlementArt/Textures/结算标题.png",
+                "Assets/Resources/UI/SettlementArt/Textures/背包.png",
+                "Assets/Resources/UI/SettlementArt/Textures/获取物展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/文本展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/按键.png",
+                "Assets/Resources/UI/SettlementArt/Textures/装饰.png"
+            ],
+            "newMarkerCount": 2,
+            "petIconPath": "Assets/Resources/UI/SettlementIcons/FlyingCompanion.png",
+            "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
+            "gainedText": "本局 +18",
+            "ownedText": "拥有 821",
+            "outcomeText": "",
+            "visibleHeaders": [
+                "新宠物",
+                "新菜谱",
+                "采集物"
+            ],
+            "headerInkPixels": 3364,
+            "foregroundFraction": 0.5452437400817871,
+            "quantizedColors": 1151,
+            "rects": [
+                {
+                    "name": "Panel",
+                    "x": 159.99996948242188,
+                    "y": 40.00000762939453,
+                    "width": 1600.0,
+                    "height": 1000.0
+                },
+                {
+                    "name": "Title",
+                    "x": 757.0,
+                    "y": 839.0,
+                    "width": 706.0001220703125,
+                    "height": 76.0
+                },
+                {
+                    "name": "InventoryViewport",
+                    "x": 211.99996948242188,
+                    "y": 204.00001525878907,
+                    "width": 235.00003051757813,
+                    "height": 519.9999389648438
+                },
+                {
+                    "name": "DetailsViewport",
+                    "x": 560.0,
+                    "y": 398.0,
+                    "width": 1082.0,
+                    "height": 410.0
+                },
+                {
+                    "name": "Statistics",
+                    "x": 560.0,
+                    "y": 232.0,
+                    "width": 1100.0001220703125,
+                    "height": 156.0
+                },
+                {
+                    "name": "IngredientDelta",
+                    "x": 1353.0,
+                    "y": 340.0,
+                    "width": 280.0,
+                    "height": 48.0
+                },
+                {
+                    "name": "Duration",
+                    "x": 1353.0,
+                    "y": 286.0,
+                    "width": 280.0,
+                    "height": 48.0
+                },
+                {
+                    "name": "Kills",
+                    "x": 1353.0,
+                    "y": 232.0,
+                    "width": 280.0,
+                    "height": 48.000030517578128
+                },
+                {
+                    "name": "Retry",
+                    "x": 564.9999389648438,
+                    "y": 78.00001525878906,
+                    "width": 480.00006103515627,
+                    "height": 87.0
+                },
+                {
+                    "name": "Home",
+                    "x": 1175.0,
+                    "y": 78.00001525878906,
+                    "width": 480.0,
+                    "height": 87.0
                 }
             ]
         },
@@ -100,9 +215,19 @@
             "width": 1280,
             "height": 720,
             "scaleFactor": 0.6666666865348816,
-            "pngBytes": 94803,
+            "pngBytes": 215219,
             "slotCount": 12,
             "ingredientIconCount": 5,
+            "bagScrolledToBottom": false,
+            "formalArtwork": [
+                "Assets/Resources/UI/SettlementArt/Textures/结算底板.png",
+                "Assets/Resources/UI/SettlementArt/Textures/结算标题.png",
+                "Assets/Resources/UI/SettlementArt/Textures/背包.png",
+                "Assets/Resources/UI/SettlementArt/Textures/获取物展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/文本展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/按键.png",
+                "Assets/Resources/UI/SettlementArt/Textures/装饰.png"
+            ],
             "newMarkerCount": 2,
             "petIconPath": "Assets/Resources/UI/SettlementIcons/FlyingCompanion.png",
             "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
@@ -114,79 +239,79 @@
                 "新菜谱",
                 "采集物"
             ],
-            "headerInkPixels": 1032,
-            "foregroundFraction": 0.637295126914978,
-            "quantizedColors": 698,
+            "headerInkPixels": 1417,
+            "foregroundFraction": 0.545678973197937,
+            "quantizedColors": 979,
             "rects": [
                 {
                     "name": "Panel",
-                    "x": 126.66664123535156,
-                    "y": 39.999996185302737,
-                    "width": 1026.666748046875,
-                    "height": 640.0
+                    "x": 106.66664123535156,
+                    "y": 26.666671752929689,
+                    "width": 1066.666748046875,
+                    "height": 666.6666870117188
                 },
                 {
                     "name": "Title",
-                    "x": 236.8000030517578,
-                    "y": 552.7999877929688,
-                    "width": 720.0,
-                    "height": 42.0
+                    "x": 504.66668701171877,
+                    "y": 559.3333129882813,
+                    "width": 470.66668701171877,
+                    "height": 50.66668701171875
                 },
                 {
                     "name": "InventoryViewport",
-                    "x": 238.0,
-                    "y": 209.6000213623047,
-                    "width": 337.20001220703127,
-                    "height": 276.0
+                    "x": 141.33331298828126,
+                    "y": 136.00001525878907,
+                    "width": 156.66668701171876,
+                    "height": 346.6666259765625
                 },
                 {
                     "name": "DetailsViewport",
-                    "x": 637.5999755859375,
-                    "y": 281.6000061035156,
-                    "width": 391.199951171875,
-                    "height": 239.99996948242188
+                    "x": 373.33331298828127,
+                    "y": 265.3333435058594,
+                    "width": 721.3333129882813,
+                    "height": 273.3333435058594
                 },
                 {
                     "name": "Statistics",
-                    "x": 637.5999755859375,
-                    "y": 191.6000213623047,
-                    "width": 391.199951171875,
-                    "height": 79.19999694824219
+                    "x": 373.33331298828127,
+                    "y": 154.6666717529297,
+                    "width": 733.3334350585938,
+                    "height": 103.99998474121094
                 },
                 {
                     "name": "IngredientDelta",
-                    "x": 895.5999755859375,
-                    "y": 243.20001220703126,
-                    "width": 132.0,
-                    "height": 28.79998779296875
+                    "x": 902.0,
+                    "y": 226.66665649414063,
+                    "width": 186.666748046875,
+                    "height": 32.0
                 },
                 {
                     "name": "Duration",
-                    "x": 895.5999755859375,
-                    "y": 216.80001831054688,
-                    "width": 132.0,
-                    "height": 28.79998779296875
+                    "x": 902.0,
+                    "y": 190.6666717529297,
+                    "width": 186.666748046875,
+                    "height": 32.0
                 },
                 {
                     "name": "Kills",
-                    "x": 895.5999755859375,
-                    "y": 190.4000244140625,
-                    "width": 132.0,
-                    "height": 28.79998779296875
+                    "x": 902.0,
+                    "y": 154.6666717529297,
+                    "width": 186.666748046875,
+                    "height": 32.00001525878906
                 },
                 {
                     "name": "Retry",
-                    "x": 646.0,
-                    "y": 119.0,
-                    "width": 186.0,
-                    "height": 42.0
+                    "x": 376.6666259765625,
+                    "y": 52.00000762939453,
+                    "width": 320.0,
+                    "height": 58.0
                 },
                 {
                     "name": "Home",
-                    "x": 856.0,
-                    "y": 119.0,
-                    "width": 186.0,
-                    "height": 42.0
+                    "x": 783.3333740234375,
+                    "y": 52.00000762939453,
+                    "width": 320.0,
+                    "height": 58.0
                 }
             ]
         },
@@ -195,9 +320,19 @@
             "width": 1024,
             "height": 768,
             "scaleFactor": 0.6158403158187866,
-            "pngBytes": 82517,
+            "pngBytes": 179382,
             "slotCount": 12,
             "ingredientIconCount": 2,
+            "bagScrolledToBottom": false,
+            "formalArtwork": [
+                "Assets/Resources/UI/SettlementArt/Textures/结算底板.png",
+                "Assets/Resources/UI/SettlementArt/Textures/结算标题.png",
+                "Assets/Resources/UI/SettlementArt/Textures/背包.png",
+                "Assets/Resources/UI/SettlementArt/Textures/获取物展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/文本展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/按键.png",
+                "Assets/Resources/UI/SettlementArt/Textures/装饰.png"
+            ],
             "newMarkerCount": 0,
             "petIconPath": "",
             "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
@@ -207,86 +342,86 @@
             "visibleHeaders": [
                 "采集物"
             ],
-            "headerInkPixels": 292,
-            "foregroundFraction": 0.6361662149429321,
-            "quantizedColors": 650,
+            "headerInkPixels": 423,
+            "foregroundFraction": 0.5510378479957581,
+            "quantizedColors": 874,
             "rects": [
                 {
                     "name": "Panel",
-                    "x": 37.803009033203128,
-                    "y": 88.39663696289063,
-                    "width": 948.39404296875,
-                    "height": 591.206787109375
+                    "x": 19.327789306640626,
+                    "y": 76.07984161376953,
+                    "width": 985.344482421875,
+                    "height": 615.84033203125
                 },
                 {
                     "name": "Title",
-                    "x": 139.53982543945313,
-                    "y": 562.1010131835938,
-                    "width": 665.107421875,
-                    "height": 38.79791259765625
+                    "x": 386.98443603515627,
+                    "y": 568.13623046875,
+                    "width": 434.783203125,
+                    "height": 46.80389404296875
                 },
                 {
                     "name": "InventoryViewport",
-                    "x": 140.6483154296875,
-                    "y": 245.06643676757813,
-                    "width": 311.49200439453127,
-                    "height": 254.9578857421875
+                    "x": 51.35150146484375,
+                    "y": 177.07766723632813,
+                    "width": 144.72244262695313,
+                    "height": 320.2369689941406
                 },
                 {
                     "name": "DetailsViewport",
-                    "x": 509.782958984375,
-                    "y": 311.5771789550781,
-                    "width": 361.37506103515627,
-                    "height": 221.70254516601563
+                    "x": 265.66387939453127,
+                    "y": 296.5506591796875,
+                    "width": 666.3391723632813,
+                    "height": 252.49456787109376
                 },
                 {
                     "name": "Statistics",
-                    "x": 509.782958984375,
-                    "y": 228.43875122070313,
-                    "width": 361.37506103515627,
-                    "height": 73.16183471679688
+                    "x": 265.66387939453127,
+                    "y": 194.32118225097657,
+                    "width": 677.4242553710938,
+                    "height": 96.07109069824219
                 },
                 {
                     "name": "IngredientDelta",
-                    "x": 748.1131591796875,
-                    "y": 276.10479736328127,
-                    "width": 121.93634033203125,
-                    "height": 26.60430908203125
+                    "x": 754.0252075195313,
+                    "y": 260.8319396972656,
+                    "width": 172.43524169921876,
+                    "height": 29.560333251953126
                 },
                 {
                     "name": "Duration",
-                    "x": 748.1131591796875,
-                    "y": 251.71751403808595,
-                    "width": 121.93634033203125,
-                    "height": 26.604324340820314
+                    "x": 754.0252075195313,
+                    "y": 227.57656860351563,
+                    "width": 172.43524169921876,
+                    "height": 29.560333251953126
                 },
                 {
                     "name": "Kills",
-                    "x": 748.1131591796875,
-                    "y": 227.33023071289063,
-                    "width": 121.93634033203125,
-                    "height": 26.60430908203125
+                    "x": 754.0252075195313,
+                    "y": 194.32118225097657,
+                    "width": 172.43524169921876,
+                    "height": 29.560317993164064
                 },
                 {
                     "name": "Retry",
-                    "x": 517.5425415039063,
-                    "y": 161.37371826171876,
-                    "width": 171.8194580078125,
-                    "height": 38.79795837402344
+                    "x": 268.74310302734377,
+                    "y": 99.48177337646485,
+                    "width": 295.60333251953127,
+                    "height": 53.578102111816409
                 },
                 {
                     "name": "Home",
-                    "x": 711.5322265625,
-                    "y": 161.37371826171876,
-                    "width": 171.8194580078125,
-                    "height": 38.79795837402344
+                    "x": 644.4056396484375,
+                    "y": 99.48177337646485,
+                    "width": 295.60333251953127,
+                    "height": 53.578102111816409
                 },
                 {
                     "name": "Status",
-                    "x": 140.6483154296875,
-                    "y": 159.71095275878907,
-                    "width": 343.63885498046877,
-                    "height": 46.55754089355469
+                    "x": 265.66387939453127,
+                    "y": 155.5232391357422,
+                    "width": 677.4242553710938,
+                    "height": 20.938568115234376
                 }
             ]
         },
@@ -295,9 +430,19 @@
             "width": 1024,
             "height": 768,
             "scaleFactor": 0.6158403158187866,
-            "pngBytes": 87315,
+            "pngBytes": 194184,
             "slotCount": 12,
             "ingredientIconCount": 2,
+            "bagScrolledToBottom": false,
+            "formalArtwork": [
+                "Assets/Resources/UI/SettlementArt/Textures/结算底板.png",
+                "Assets/Resources/UI/SettlementArt/Textures/结算标题.png",
+                "Assets/Resources/UI/SettlementArt/Textures/背包.png",
+                "Assets/Resources/UI/SettlementArt/Textures/获取物展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/文本展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/按键.png",
+                "Assets/Resources/UI/SettlementArt/Textures/装饰.png"
+            ],
             "newMarkerCount": 2,
             "petIconPath": "Assets/Resources/UI/SettlementIcons/FlyingCompanion.png",
             "woodIconPath": "Assets/Resources/UI/SettlementIcons/Wood.png",
@@ -309,79 +454,79 @@
                 "新菜谱",
                 "采集物"
             ],
-            "headerInkPixels": 885,
-            "foregroundFraction": 0.6361662149429321,
-            "quantizedColors": 682,
+            "headerInkPixels": 1279,
+            "foregroundFraction": 0.5455726981163025,
+            "quantizedColors": 949,
             "rects": [
                 {
                     "name": "Panel",
-                    "x": 37.803009033203128,
-                    "y": 88.39663696289063,
-                    "width": 948.39404296875,
-                    "height": 591.206787109375
+                    "x": 19.327789306640626,
+                    "y": 76.07984161376953,
+                    "width": 985.344482421875,
+                    "height": 615.84033203125
                 },
                 {
                     "name": "Title",
-                    "x": 139.53982543945313,
-                    "y": 562.1010131835938,
-                    "width": 665.107421875,
-                    "height": 38.79791259765625
+                    "x": 386.98443603515627,
+                    "y": 568.13623046875,
+                    "width": 434.783203125,
+                    "height": 46.80389404296875
                 },
                 {
                     "name": "InventoryViewport",
-                    "x": 140.6483154296875,
-                    "y": 245.06643676757813,
-                    "width": 311.49200439453127,
-                    "height": 254.9578857421875
+                    "x": 51.35150146484375,
+                    "y": 177.07766723632813,
+                    "width": 144.72244262695313,
+                    "height": 320.2369689941406
                 },
                 {
                     "name": "DetailsViewport",
-                    "x": 509.782958984375,
-                    "y": 311.5771789550781,
-                    "width": 361.37506103515627,
-                    "height": 221.70254516601563
+                    "x": 265.66387939453127,
+                    "y": 296.5506591796875,
+                    "width": 666.3391723632813,
+                    "height": 252.49456787109376
                 },
                 {
                     "name": "Statistics",
-                    "x": 509.782958984375,
-                    "y": 228.43875122070313,
-                    "width": 361.37506103515627,
-                    "height": 73.16183471679688
+                    "x": 265.66387939453127,
+                    "y": 194.32118225097657,
+                    "width": 677.4242553710938,
+                    "height": 96.07109069824219
                 },
                 {
                     "name": "IngredientDelta",
-                    "x": 748.1131591796875,
-                    "y": 276.10479736328127,
-                    "width": 121.93634033203125,
-                    "height": 26.60430908203125
+                    "x": 754.0252075195313,
+                    "y": 260.8319396972656,
+                    "width": 172.43524169921876,
+                    "height": 29.560333251953126
                 },
                 {
                     "name": "Duration",
-                    "x": 748.1131591796875,
-                    "y": 251.71751403808595,
-                    "width": 121.93634033203125,
-                    "height": 26.604324340820314
+                    "x": 754.0252075195313,
+                    "y": 227.57656860351563,
+                    "width": 172.43524169921876,
+                    "height": 29.560333251953126
                 },
                 {
                     "name": "Kills",
-                    "x": 748.1131591796875,
-                    "y": 227.33023071289063,
-                    "width": 121.93634033203125,
-                    "height": 26.60430908203125
+                    "x": 754.0252075195313,
+                    "y": 194.32118225097657,
+                    "width": 172.43524169921876,
+                    "height": 29.560317993164064
                 },
                 {
                     "name": "Retry",
-                    "x": 517.5425415039063,
-                    "y": 161.37371826171876,
-                    "width": 171.8194580078125,
-                    "height": 38.79795837402344
+                    "x": 268.74310302734377,
+                    "y": 99.48177337646485,
+                    "width": 295.60333251953127,
+                    "height": 53.578102111816409
                 },
                 {
                     "name": "Home",
-                    "x": 711.5322265625,
-                    "y": 161.37371826171876,
-                    "width": 171.8194580078125,
-                    "height": 38.79795837402344
+                    "x": 644.4056396484375,
+                    "y": 99.48177337646485,
+                    "width": 295.60333251953127,
+                    "height": 53.578102111816409
                 }
             ]
         },
@@ -390,9 +535,19 @@
             "width": 1280,
             "height": 720,
             "scaleFactor": 0.6666666865348816,
-            "pngBytes": 66517,
+            "pngBytes": 137607,
             "slotCount": 1,
             "ingredientIconCount": 0,
+            "bagScrolledToBottom": false,
+            "formalArtwork": [
+                "Assets/Resources/UI/SettlementArt/Textures/结算底板.png",
+                "Assets/Resources/UI/SettlementArt/Textures/结算标题.png",
+                "Assets/Resources/UI/SettlementArt/Textures/背包.png",
+                "Assets/Resources/UI/SettlementArt/Textures/获取物展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/文本展示框.png",
+                "Assets/Resources/UI/SettlementArt/Textures/按键.png",
+                "Assets/Resources/UI/SettlementArt/Textures/装饰.png"
+            ],
             "newMarkerCount": 0,
             "petIconPath": "",
             "woodIconPath": "",
@@ -401,78 +556,78 @@
             "outcomeText": "",
             "visibleHeaders": [],
             "headerInkPixels": 0,
-            "foregroundFraction": 0.6376293301582336,
-            "quantizedColors": 512,
+            "foregroundFraction": 0.5130565762519836,
+            "quantizedColors": 763,
             "rects": [
                 {
                     "name": "Panel",
-                    "x": 126.66664123535156,
-                    "y": 39.999996185302737,
-                    "width": 1026.666748046875,
-                    "height": 640.0
+                    "x": 106.66664123535156,
+                    "y": 26.666671752929689,
+                    "width": 1066.666748046875,
+                    "height": 666.6666870117188
                 },
                 {
                     "name": "Title",
-                    "x": 236.8000030517578,
-                    "y": 552.7999877929688,
-                    "width": 720.0,
-                    "height": 42.0
+                    "x": 504.66668701171877,
+                    "y": 559.3333129882813,
+                    "width": 470.66668701171877,
+                    "height": 50.66668701171875
                 },
                 {
                     "name": "InventoryViewport",
-                    "x": 238.0,
-                    "y": 209.6000213623047,
-                    "width": 337.20001220703127,
-                    "height": 276.0
+                    "x": 141.33331298828126,
+                    "y": 396.0,
+                    "width": 156.66668701171876,
+                    "height": 86.66665649414063
                 },
                 {
                     "name": "DetailsViewport",
-                    "x": 637.5999755859375,
-                    "y": 281.6000061035156,
-                    "width": 391.199951171875,
-                    "height": 239.99996948242188
+                    "x": 373.33331298828127,
+                    "y": 265.3333435058594,
+                    "width": 721.3333129882813,
+                    "height": 273.3333435058594
                 },
                 {
                     "name": "Statistics",
-                    "x": 637.5999755859375,
-                    "y": 191.6000213623047,
-                    "width": 391.199951171875,
-                    "height": 79.19999694824219
+                    "x": 373.33331298828127,
+                    "y": 154.6666717529297,
+                    "width": 733.3334350585938,
+                    "height": 103.99998474121094
                 },
                 {
                     "name": "IngredientDelta",
-                    "x": 895.5999755859375,
-                    "y": 243.20001220703126,
-                    "width": 132.0,
-                    "height": 28.79998779296875
+                    "x": 902.0,
+                    "y": 226.66665649414063,
+                    "width": 186.666748046875,
+                    "height": 32.0
                 },
                 {
                     "name": "Duration",
-                    "x": 895.5999755859375,
-                    "y": 216.80001831054688,
-                    "width": 132.0,
-                    "height": 28.79998779296875
+                    "x": 902.0,
+                    "y": 190.6666717529297,
+                    "width": 186.666748046875,
+                    "height": 32.0
                 },
                 {
                     "name": "Kills",
-                    "x": 895.5999755859375,
-                    "y": 190.4000244140625,
-                    "width": 132.0,
-                    "height": 28.79998779296875
+                    "x": 902.0,
+                    "y": 154.6666717529297,
+                    "width": 186.666748046875,
+                    "height": 32.00001525878906
                 },
                 {
                     "name": "Retry",
-                    "x": 646.0,
-                    "y": 119.0,
-                    "width": 186.0,
-                    "height": 42.0
+                    "x": 376.6666259765625,
+                    "y": 52.00000762939453,
+                    "width": 320.0,
+                    "height": 58.0
                 },
                 {
                     "name": "Home",
-                    "x": 856.0,
-                    "y": 119.0,
-                    "width": 186.0,
-                    "height": 42.0
+                    "x": 783.3333740234375,
+                    "y": 52.00000762939453,
+                    "width": 320.0,
+                    "height": 58.0
                 }
             ]
         }

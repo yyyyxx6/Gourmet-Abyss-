@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -8,20 +9,33 @@ using UnityEngine.UI;
 public static class SettlementPanelBuilder
 {
     private const string OutputPath = "Assets/Resources/UI/SettlementPanel.prefab";
-    private static readonly Color Ink = new Color32(53, 45, 38, 255);
-    private static readonly Color MutedInk = new Color32(100, 88, 69, 255);
-    private static readonly Color Green = new Color32(39, 77, 58, 255);
+    private const string ArtworkPath = "Assets/NewVersion/UI/\u6218\u6597\u7ed3\u7b97\u754c\u9762/";
+    private const string SpriteFolder = "Assets/Resources/UI/SettlementArt";
+    private static readonly Color Ink = new Color32(248, 235, 195, 255);
+    private static readonly Color MutedInk = new Color32(220, 217, 174, 255);
+    private static readonly Color PaperInk = new Color32(76, 60, 42, 255);
+    private static readonly Dictionary<string, Texture2D> FormalTextures = new Dictionary<string, Texture2D>();
 
     [MenuItem("Tools/Chef Dungeon/Build Settlement Panel")]
     public static void Build()
     {
-        Directory.CreateDirectory(Path.Combine(Application.dataPath, "Resources", "UI"));
+        FormalTextures.Clear();
+        Directory.CreateDirectory(Path.Combine(Application.dataPath, "Resources", "UI", "SettlementArt", "Textures"));
         AssetDatabase.Refresh();
         Font font = Load<Font>("Assets/Font/AaHuanMengKongJianXiangSuTi-2.ttf");
-        Sprite panelSprite = Load<Sprite>("Assets/Texture/CookUI/menu_panel_blank.png");
-        Sprite slotSprite = Load<Sprite>("Assets/Texture/backpack_border_normal.png");
-        Sprite retrySprite = LoadButtonSprite("Assets/Texture/button_light_normal.png", "Assets/Resources/UI/SettlementButtonLight.asset");
-        Sprite homeSprite = LoadButtonSprite("Assets/Texture/button_dark_normal.png", "Assets/Resources/UI/SettlementButtonDark.asset");
+        Sprite panelSprite = LoadFormalSprite("\u7ed3\u7b97\u5e95\u677f.png", "FormalBase");
+        Sprite titleSprite = LoadFormalSprite("\u7ed3\u7b97\u6807\u9898.png", "FormalTitle");
+        Sprite buttonSprite = LoadFormalSprite("\u6309\u952e.png", "FormalButton");
+        Sprite rewardSprite = LoadFormalSprite("\u83b7\u53d6\u7269\u5c55\u793a\u6846.png", "FormalRewardFrame",
+            null, new Vector4(100, 30, 100, 30));
+        Sprite statisticSprite = LoadFormalSprite("\u6587\u672c\u5c55\u793a\u6846.png", "FormalTextFrame",
+            null, new Vector4(50, 20, 42, 20));
+        Sprite decorationSprite = LoadFormalSprite("\u88c5\u9970.png", "FormalBagDecoration");
+        // Slice the supplied scroll instead of stretching its four painted slots across every bag size.
+        Sprite bagTop = LoadFormalSprite("\u80cc\u5305.png", "FormalBagTop", new Rect(0, 615, 270, 76));
+        Sprite bagSlot = LoadFormalSprite("\u80cc\u5305.png", "FormalBagSlot", new Rect(0, 465, 270, 150));
+        Sprite bagBottom = LoadFormalSprite("\u80cc\u5305.png", "FormalBagBottom", new Rect(0, 0, 270, 34));
+
         GameObject root = new GameObject("SettlementPanel", typeof(RectTransform), typeof(Canvas),
             typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(CanvasGroup), typeof(SettlementUIController));
         try
@@ -47,84 +61,83 @@ public static class SettlementPanelBuilder
             input.layer = 5;
             view.eventSystem = input.GetComponent<EventSystem>();
 
-            Image backdrop = MakeImage("Backdrop", rootRect, null, new Color32(17, 25, 21, 210));
+            Image backdrop = MakeImage("Backdrop", rootRect, null, new Color32(13, 23, 15, 224));
             Stretch(backdrop.rectTransform);
             backdrop.raycastTarget = true;
-            Image panel = MakeImage("Panel", rootRect, panelSprite, Color.white);
-            SetRect(panel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1540f, 960f));
-            panel.raycastTarget = true;
-            RectTransform body = panel.rectTransform;
+            RectTransform body = MakeRect("Panel", rootRect);
+            SetRect(body, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1600f, 1000f));
+            Image surface = MakeImage("Surface", body, panelSprite, Color.white);
+            PlaceTopLeft(surface.rectTransform, 340, 70, 1220, 766);
+            surface.raycastTarget = true;
+            Image titlePlate = MakeImage("TitlePlate", body, titleSprite, Color.white);
+            PlaceTopLeft(titlePlate.rectTransform, 575, 118, 750, 92);
+            view.titleText = MakeText("Title", body, "\u63a2\u7d22\u7ed3\u675f", font, 44, Ink, TextAnchor.MiddleCenter);
+            PlaceTopLeft(view.titleText.rectTransform, 597, 125, 706, 76);
+            view.titleText.verticalOverflow = VerticalWrapMode.Overflow;
 
-            Text eyebrow = MakeText("Eyebrow", body, "\u672c\u6b21\u63a2\u7d22", font, 22, MutedInk);
-            PlaceTopLeft(eyebrow.rectTransform, 60, 36, 500, 30);
-            view.titleText = MakeText("Title", body, "\u63a2\u7d22\u7ed3\u675f", font, 52, Green);
-            PlaceTopLeft(view.titleText.rectTransform, 58, 72, 1200, 70);
-            AddLine(body, new Vector2(60, -162), new Vector2(1340, 2));
-
-            Text bagLabel = MakeText("InventoryLabel", body, "\u80cc\u5305", font, 30, Ink);
-            PlaceTopLeft(bagLabel.rectTransform, 60, 190, 440, 44);
-            view.inventorySummaryText = MakeText("InventorySummary", body, "0 / 0", font, 24, MutedInk, TextAnchor.MiddleRight);
-            PlaceTopLeft(view.inventorySummaryText.rectTransform, 475, 190, 135, 44);
-            view.inventoryScroll = MakeScroll("Inventory", body, new Vector2(60, -254), new Vector2(562, 460), out RectTransform inventoryContent, false);
+            Image decoration = MakeImage("BagDecoration", body, decorationSprite, Color.white);
+            PlaceTopLeft(decoration.rectTransform, 57, 28, 222, 220);
+            decoration.preserveAspect = true;
+            Image scrollTop = MakeImage("BagTop", body, bagTop, Color.white);
+            PlaceTopLeft(scrollTop.rectTransform, 52, 250, 235, 66);
+            view.inventoryScroll = MakeScroll("Inventory", body, new Vector2(52, -316),
+                new Vector2(251, 520), out RectTransform inventoryContent, 16);
             view.inventoryContent = inventoryContent;
             GridLayoutGroup grid = inventoryContent.gameObject.AddComponent<GridLayoutGroup>();
-            grid.cellSize = new Vector2(124, 128);
-            grid.spacing = new Vector2(18, 20);
-            grid.padding = new RectOffset(4, 4, 4, 8);
+            grid.cellSize = new Vector2(235, 130);
+            grid.spacing = Vector2.zero;
+            grid.padding = new RectOffset();
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = 4;
-            grid.childAlignment = TextAnchor.UpperLeft;
+            grid.constraintCount = 1;
+            grid.childAlignment = TextAnchor.UpperCenter;
+            Image scrollBottom = MakeImage("BagBottom", body, bagBottom, Color.white);
+            PlaceTopLeft(scrollBottom.rectTransform, 52, 836, 235, 30);
+            view.inventoryFooter = scrollBottom.rectTransform;
+            view.inventorySummaryText = MakeText("InventorySummary", body, "\u80cc\u5305 0 / 0", font, 23, Ink, TextAnchor.MiddleCenter);
+            PlaceTopLeft(view.inventorySummaryText.rectTransform, 52, 872, 235, 34);
+            view.inventorySummaryText.verticalOverflow = VerticalWrapMode.Overflow;
 
-            Image divider = MakeImage("ColumnDivider", body, null, new Color32(132, 111, 76, 85));
-            PlaceTopLeft(divider.rectTransform, 674, 194, 2, 532);
-            view.detailsScroll = MakeScroll("Details", body, new Vector2(726, -194), new Vector2(670, 400), out RectTransform detailsContent);
+            view.detailsScroll = MakeScroll("Details", body, new Vector2(400, -232),
+                new Vector2(1100, 410), out RectTransform detailsContent, 18);
             view.detailsContent = detailsContent;
-            AddVerticalLayout(detailsContent, 14);
-            view.petSection = MakeSection("Pets", detailsContent, "\u65b0\u5ba0\u7269", font, out RectTransform pets);
+            AddVerticalLayout(detailsContent, 10);
+            view.petSection = MakeSection("Pets", detailsContent, "\u65b0\u5ba0\u7269", font, rewardSprite, out RectTransform pets);
             view.petContent = pets;
-            view.recipeSection = MakeSection("Recipes", detailsContent, "\u65b0\u83dc\u8c31", font, out RectTransform recipes);
+            view.recipeSection = MakeSection("Recipes", detailsContent, "\u65b0\u83dc\u8c31", font, rewardSprite, out RectTransform recipes);
             view.recipeContent = recipes;
-            view.gatheredSection = MakeSection("Gathered", detailsContent, "\u91c7\u96c6\u7269", font, out RectTransform gathered);
+            view.gatheredSection = MakeSection("Gathered", detailsContent, "\u91c7\u96c6\u7269", font, rewardSprite, out RectTransform gathered);
             view.gatheredContent = gathered;
-            AddLine(body, new Vector2(726, -598), new Vector2(670, 1));
-            RectTransform statistics = MakeRect("Statistics", body);
-            PlaceTopLeft(statistics, 726, 612, 652, 132);
-            AddVerticalLayout(statistics, 0);
-            view.ingredientDeltaText = MakeStat(statistics, "IngredientDelta", "\u83b7\u5f97\u98df\u6750\u6570", font);
-            view.durationText = MakeStat(statistics, "Duration", "\u5192\u9669\u65f6\u957f", font);
-            view.killsText = MakeStat(statistics, "Kills", "\u51fb\u6740\u602a\u7269\u6570", font);
 
-            AddLine(body, new Vector2(60, -758), new Vector2(1340, 2));
-            view.statusText = MakeText("Status", body, string.Empty, font, 22, new Color32(153, 48, 48, 255));
-            PlaceTopLeft(view.statusText.rectTransform, 60, 784, 620, 84);
+            RectTransform statistics = MakeRect("Statistics", body);
+            PlaceTopLeft(statistics, 400, 652, 1100, 156);
+            AddVerticalLayout(statistics, 6);
+            view.ingredientDeltaText = MakeStat(statistics, "IngredientDelta", "\u83b7\u5f97\u98df\u6750\u6570", font, statisticSprite);
+            view.durationText = MakeStat(statistics, "Duration", "\u5192\u9669\u65f6\u957f", font, statisticSprite);
+            view.killsText = MakeStat(statistics, "Kills", "\u51fb\u6740\u602a\u7269\u6570", font, statisticSprite);
+
+            view.statusText = MakeText("Status", body, string.Empty, font, 22, new Color32(255, 194, 171, 255), TextAnchor.MiddleCenter);
+            PlaceTopLeft(view.statusText.rectTransform, 400, 837, 1100, 34);
             view.statusText.resizeTextForBestFit = true;
             view.statusText.resizeTextMinSize = 18;
             view.statusText.resizeTextMaxSize = 22;
+            view.statusText.verticalOverflow = VerticalWrapMode.Overflow;
             view.statusText.gameObject.SetActive(false);
-            view.retryButton = MakeButton("Retry", body, "\u91cd\u65b0\u63a2\u7d22", font, retrySprite, Green);
-            PlaceTopLeft(view.retryButton.GetComponent<RectTransform>(), 740, 795, 310, 70);
-            view.homeButton = MakeButton("Home", body, "\u8fd4\u56de\u5c0f\u9547", font, homeSprite, Color.white);
-            PlaceTopLeft(view.homeButton.GetComponent<RectTransform>(), 1090, 795, 310, 70);
-
-            // Fit the established two-column layout inside the existing wooden frame.
-            foreach (RectTransform child in body)
-            {
-                child.anchoredPosition = new Vector2(113f, -63f) + child.anchoredPosition * 0.9f;
-                child.localScale = Vector3.one * 0.9f;
-            }
+            view.retryButton = MakeButton("Retry", body, "\u91cd\u65b0\u63a2\u7d22", font, buttonSprite);
+            PlaceTopLeft(view.retryButton.GetComponent<RectTransform>(), 405, 875, 480, 87);
+            view.homeButton = MakeButton("Home", body, "\u8fd4\u56de\u5c0f\u9547", font, buttonSprite);
+            PlaceTopLeft(view.homeButton.GetComponent<RectTransform>(), 1015, 875, 480, 87);
 
             RectTransform templates = MakeRect("Templates", rootRect);
-            view.inventorySlotTemplate = MakeSlotTemplate(templates, slotSprite, font);
+            view.inventorySlotTemplate = MakeSlotTemplate(templates, bagSlot, font);
             view.rewardRowTemplate = MakeRewardTemplate(templates, font);
             templates.gameObject.SetActive(false);
             view.petSection.SetActive(false);
             view.recipeSection.SetActive(false);
             view.gatheredSection.SetActive(false);
             root.SetActive(false);
-
             PrefabUtility.SaveAsPrefabAsset(root, OutputPath);
             AssetDatabase.SaveAssets();
-            Debug.Log("Built " + OutputPath);
+            Debug.Log("Built " + OutputPath + " with the formal settlement artwork.");
         }
         finally
         {
@@ -136,22 +149,23 @@ public static class SettlementPanelBuilder
     {
         Image image = MakeImage("InventorySlotTemplate", parent, sprite, Color.white);
         RectTransform rect = image.rectTransform;
-        rect.sizeDelta = new Vector2(124, 128);
+        rect.sizeDelta = new Vector2(235, 130);
         Image icon = MakeImage("Icon", rect, null, Color.white);
         icon.preserveAspect = true;
-        SetRect(icon.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 5), new Vector2(80, 80));
-        Text fallback = MakeText("Name", rect, string.Empty, font, 23, Color.white, TextAnchor.MiddleCenter);
-        Stretch(fallback.rectTransform, new Vector2(9, 30), new Vector2(-9, -12));
+        SetRect(icon.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-13, 8), new Vector2(72, 72));
+        Text fallback = MakeText("Name", rect, string.Empty, font, 21, PaperInk, TextAnchor.MiddleCenter);
+        SetRect(fallback.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-13, 8), new Vector2(86, 76));
         fallback.resizeTextForBestFit = true;
-        fallback.resizeTextMinSize = 16;
-        fallback.resizeTextMaxSize = 23;
-        Text count = MakeText("Count", rect, string.Empty, font, 26, Color.white, TextAnchor.LowerRight);
-        Stretch(count.rectTransform, new Vector2(8, 8), new Vector2(-10, -86));
+        fallback.resizeTextMinSize = 14;
+        fallback.resizeTextMaxSize = 21;
+        Text count = MakeText("Count", rect, string.Empty, font, 25, Color.white, TextAnchor.MiddleRight);
+        SetRect(count.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-8, -27), new Vector2(86, 28));
         count.resizeTextForBestFit = true;
-        count.resizeTextMinSize = 14;
-        count.resizeTextMaxSize = 26;
+        count.resizeTextMinSize = 13;
+        count.resizeTextMaxSize = 25;
+        count.verticalOverflow = VerticalWrapMode.Overflow;
         Outline shadow = count.gameObject.AddComponent<Outline>();
-        shadow.effectColor = new Color32(52, 34, 29, 255);
+        shadow.effectColor = PaperInk;
         shadow.effectDistance = new Vector2(1, -1);
         return rect;
     }
@@ -164,73 +178,85 @@ public static class SettlementPanelBuilder
         layout.preferredHeight = 76;
         Image icon = MakeImage("Icon", rect, null, Color.white);
         icon.preserveAspect = true;
-        SetRect(icon.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(34, 0), new Vector2(56, 56));
-        Text placeholder = MakeText("Placeholder", icon.transform, "", font, 28, MutedInk, TextAnchor.MiddleCenter);
+        SetRect(icon.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(38, 0), new Vector2(64, 64));
+        Text placeholder = MakeText("Placeholder", icon.transform, "", font, 28, Ink, TextAnchor.MiddleCenter);
         Stretch(placeholder.rectTransform);
-        Text name = MakeText("Name", rect, string.Empty, font, 25, Ink);
-        Stretch(name.rectTransform, new Vector2(80, 8), new Vector2(-218, -8));
+        Text name = MakeText("Name", rect, string.Empty, font, 26, Ink);
+        Stretch(name.rectTransform, new Vector2(88, 8), new Vector2(-270, -8));
         name.resizeTextForBestFit = true;
-        name.resizeTextMinSize = 18;
-        name.resizeTextMaxSize = 25;
-        Text gain = MakeText("Gain", rect, string.Empty, font, 24, Green, TextAnchor.MiddleRight);
-        SetRect(gain.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-104, -25), new Vector2(200, 30));
+        name.resizeTextMinSize = 20;
+        name.resizeTextMaxSize = 26;
+        name.verticalOverflow = VerticalWrapMode.Overflow;
+        Text gain = MakeText("Gain", rect, string.Empty, font, 25, Ink, TextAnchor.MiddleRight);
+        SetRect(gain.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-128, -24), new Vector2(248, 32));
         gain.resizeTextForBestFit = true;
-        gain.resizeTextMinSize = 16;
-        gain.resizeTextMaxSize = 24;
-        Text total = MakeText("Total", rect, string.Empty, font, 19, MutedInk, TextAnchor.MiddleRight);
-        SetRect(total.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-104, -53), new Vector2(200, 26));
+        gain.resizeTextMinSize = 18;
+        gain.resizeTextMaxSize = 25;
+        gain.verticalOverflow = VerticalWrapMode.Overflow;
+        Text total = MakeText("Total", rect, string.Empty, font, 21, MutedInk, TextAnchor.MiddleRight);
+        SetRect(total.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-128, -54), new Vector2(248, 28));
         total.resizeTextForBestFit = true;
-        total.resizeTextMinSize = 14;
-        total.resizeTextMaxSize = 19;
-        Text outcome = MakeText("Outcome", rect, string.Empty, font, 18, new Color32(143, 66, 40, 255), TextAnchor.MiddleRight);
+        total.resizeTextMinSize = 16;
+        total.resizeTextMaxSize = 21;
+        total.verticalOverflow = VerticalWrapMode.Overflow;
+        Text outcome = MakeText("Outcome", rect, string.Empty, font, 20, new Color32(255, 208, 159, 255), TextAnchor.MiddleRight);
         outcome.rectTransform.anchorMin = new Vector2(0, 0);
         outcome.rectTransform.anchorMax = new Vector2(1, 0);
         outcome.rectTransform.pivot = new Vector2(0.5f, 0);
-        outcome.rectTransform.offsetMin = new Vector2(80, 3);
-        outcome.rectTransform.offsetMax = new Vector2(-4, 29);
+        outcome.rectTransform.offsetMin = new Vector2(88, 2);
+        outcome.rectTransform.offsetMax = new Vector2(-4, 30);
         outcome.resizeTextForBestFit = true;
-        outcome.resizeTextMinSize = 14;
-        outcome.resizeTextMaxSize = 18;
-        Image marker = MakeImage("New", icon.transform, null, new Color32(170, 62, 34, 255));
-        SetRect(marker.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(-4, 4), new Vector2(44, 20), new Vector2(0, 1));
-        Text markerText = MakeText("Label", marker.transform, "NEW", font, 15, new Color32(255, 249, 216, 255), TextAnchor.MiddleCenter);
+        outcome.resizeTextMinSize = 16;
+        outcome.resizeTextMaxSize = 20;
+        outcome.verticalOverflow = VerticalWrapMode.Overflow;
+        Image marker = MakeImage("New", icon.transform, null, new Color32(166, 58, 31, 255));
+        SetRect(marker.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(-3, 3), new Vector2(45, 21), new Vector2(0, 1));
+        Text markerText = MakeText("Label", marker.transform, "NEW", font, 16, Ink, TextAnchor.MiddleCenter);
         Stretch(markerText.rectTransform);
+        markerText.verticalOverflow = VerticalWrapMode.Overflow;
         return rect;
     }
 
-    private static GameObject MakeSection(string name, Transform parent, string title, Font font, out RectTransform content)
+    private static GameObject MakeSection(string name, Transform parent, string title, Font font, Sprite sprite,
+        out RectTransform content)
     {
-        RectTransform section = MakeRect(name, parent);
-        AddVerticalLayout(section, 4);
-        Text header = MakeText("Header", section, title, font, 28, Ink);
-        // Pixel-font line metrics can round above this single-line box at smaller canvas scales.
+        Image frame = MakeImage(name, parent, sprite, Color.white);
+        frame.type = Image.Type.Sliced;
+        RectTransform section = frame.rectTransform;
+        AddVerticalLayout(section, 0);
+        section.GetComponent<VerticalLayoutGroup>().padding = new RectOffset(34, 34, 6, 6);
+        Text header = MakeText("Header", section, title, font, 26, Ink);
         header.verticalOverflow = VerticalWrapMode.Overflow;
         LayoutElement headerLayout = header.gameObject.AddComponent<LayoutElement>();
-        headerLayout.minHeight = 34;
-        headerLayout.preferredHeight = 34;
+        headerLayout.minHeight = 32;
+        headerLayout.preferredHeight = 32;
         content = MakeRect("Rows", section);
         AddVerticalLayout(content, 4);
         content.GetComponent<VerticalLayoutGroup>().padding = new RectOffset(0, 0, 4, 4);
         return section.gameObject;
     }
 
-    private static Text MakeStat(Transform parent, string name, string label, Font font)
+    private static Text MakeStat(Transform parent, string name, string label, Font font, Sprite sprite)
     {
-        RectTransform row = MakeRect(name, parent);
+        Image image = MakeImage(name, parent, sprite, Color.white);
+        image.type = Image.Type.Sliced;
+        RectTransform row = image.rectTransform;
         LayoutElement layout = row.gameObject.AddComponent<LayoutElement>();
-        layout.minHeight = 44;
-        layout.preferredHeight = 44;
-        Text caption = MakeText("Label", row, label, font, 25, MutedInk);
-        Stretch(caption.rectTransform, new Vector2(4, 0), new Vector2(-230, 0));
-        Text value = MakeText("Value", row, "0", font, 30, Ink, TextAnchor.MiddleRight);
-        SetRect(value.rectTransform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(-112, 0), new Vector2(220, 48));
+        layout.minHeight = 48;
+        layout.preferredHeight = 48;
+        Text caption = MakeText("Label", row, label, font, 26, Ink);
+        Stretch(caption.rectTransform, new Vector2(52, 0), new Vector2(-310, 0));
+        caption.verticalOverflow = VerticalWrapMode.Overflow;
+        Text value = MakeText("Value", row, "0", font, 28, Ink, TextAnchor.MiddleRight);
+        SetRect(value.rectTransform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(-167, 0), new Vector2(280, 48));
         value.resizeTextForBestFit = true;
-        value.resizeTextMinSize = 16;
-        value.resizeTextMaxSize = 30;
+        value.resizeTextMinSize = 18;
+        value.resizeTextMaxSize = 28;
+        value.verticalOverflow = VerticalWrapMode.Overflow;
         return value;
     }
 
-    private static Button MakeButton(string name, Transform parent, string label, Font font, Sprite sprite, Color textColor)
+    private static Button MakeButton(string name, Transform parent, string label, Font font, Sprite sprite)
     {
         Image image = MakeImage(name, parent, sprite, Color.white);
         image.raycastTarget = true;
@@ -244,20 +270,24 @@ public static class SettlementPanelBuilder
         colors.disabledColor = new Color(0.65f, 0.65f, 0.65f, 0.72f);
         colors.fadeDuration = 0.08f;
         button.colors = colors;
-        Text caption = MakeText("Label", image.transform, label, font, 30, textColor, TextAnchor.MiddleCenter);
-        Stretch(caption.rectTransform, new Vector2(16, 5), new Vector2(-16, -5));
+        Text caption = MakeText("Label", image.transform, label, font, 32, new Color32(255, 242, 202, 255), TextAnchor.MiddleCenter);
+        Stretch(caption.rectTransform, new Vector2(26, 8), new Vector2(-26, -8));
+        caption.verticalOverflow = VerticalWrapMode.Overflow;
+        Outline outline = caption.gameObject.AddComponent<Outline>();
+        outline.effectColor = new Color32(102, 59, 34, 220);
+        outline.effectDistance = new Vector2(1, -1);
         return button;
     }
 
-    private static ScrollRect MakeScroll(string name, Transform parent, Vector2 position, Vector2 size, out RectTransform content,
-        bool showScrollbar = true)
+    private static ScrollRect MakeScroll(string name, Transform parent, Vector2 position, Vector2 size,
+        out RectTransform content, float scrollbarSpace)
     {
         RectTransform root = MakeRect(name, parent);
         SetRect(root, new Vector2(0, 1), new Vector2(0, 1), position, size, new Vector2(0, 1));
         ScrollRect scroll = root.gameObject.AddComponent<ScrollRect>();
         Image viewport = MakeImage("Viewport", root, null, new Color(1f, 1f, 1f, 0.001f));
         viewport.raycastTarget = true;
-        Stretch(viewport.rectTransform, Vector2.zero, new Vector2(showScrollbar ? -18f : 0f, 0f));
+        Stretch(viewport.rectTransform, Vector2.zero, new Vector2(-scrollbarSpace, 0f));
         viewport.gameObject.AddComponent<RectMask2D>();
         content = MakeRect("Content", viewport.transform);
         content.anchorMin = new Vector2(0, 1);
@@ -272,28 +302,25 @@ public static class SettlementPanelBuilder
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 30;
-        if (showScrollbar)
-        {
-            Image track = MakeImage("Scrollbar", root, null, new Color32(112, 97, 73, 35));
-            track.raycastTarget = true;
-            track.rectTransform.anchorMin = new Vector2(1, 0);
-            track.rectTransform.anchorMax = new Vector2(1, 1);
-            track.rectTransform.pivot = new Vector2(1, 0.5f);
-            track.rectTransform.sizeDelta = new Vector2(7, 0);
-            track.rectTransform.anchoredPosition = Vector2.zero;
-            Scrollbar scrollbar = track.gameObject.AddComponent<Scrollbar>();
-            RectTransform slideArea = MakeRect("SlidingArea", track.transform);
-            Stretch(slideArea);
-            Image handle = MakeImage("Handle", slideArea, null, new Color32(93, 111, 80, 210));
-            Stretch(handle.rectTransform);
-            handle.raycastTarget = true;
-            scrollbar.handleRect = handle.rectTransform;
-            scrollbar.targetGraphic = handle;
-            scrollbar.direction = Scrollbar.Direction.BottomToTop;
-            scroll.verticalScrollbar = scrollbar;
-            scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
-        }
+        scroll.scrollSensitivity = 36;
+        Image track = MakeImage("Scrollbar", root, null, new Color32(174, 171, 92, 60));
+        track.raycastTarget = true;
+        track.rectTransform.anchorMin = new Vector2(1, 0);
+        track.rectTransform.anchorMax = new Vector2(1, 1);
+        track.rectTransform.pivot = new Vector2(1, 0.5f);
+        track.rectTransform.sizeDelta = new Vector2(7, 0);
+        track.rectTransform.anchoredPosition = Vector2.zero;
+        Scrollbar scrollbar = track.gameObject.AddComponent<Scrollbar>();
+        RectTransform slideArea = MakeRect("SlidingArea", track.transform);
+        Stretch(slideArea);
+        Image handle = MakeImage("Handle", slideArea, null, new Color32(201, 194, 109, 220));
+        Stretch(handle.rectTransform);
+        handle.raycastTarget = true;
+        scrollbar.handleRect = handle.rectTransform;
+        scrollbar.targetGraphic = handle;
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scroll.verticalScrollbar = scrollbar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
         return scroll;
     }
 
@@ -305,12 +332,6 @@ public static class SettlementPanelBuilder
         layout.childControlHeight = true;
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
-    }
-
-    private static void AddLine(Transform parent, Vector2 position, Vector2 size)
-    {
-        Image image = MakeImage("Divider", parent, null, new Color32(132, 111, 76, 110));
-        SetRect(image.rectTransform, new Vector2(0, 1), new Vector2(0, 1), position, size, new Vector2(0, 1));
     }
 
     private static RectTransform MakeRect(string name, Transform parent)
@@ -377,18 +398,73 @@ public static class SettlementPanelBuilder
         return asset;
     }
 
-    private static Sprite LoadButtonSprite(string texturePath, string spritePath)
+    private static Sprite LoadFormalSprite(string filename, string assetName, Rect? sourceRect = null, Vector4 border = default)
     {
-        Sprite imported = AssetDatabase.LoadAssetAtPath<Sprite>(texturePath);
-        if (imported != null) return imported;
-        Sprite existing = AssetDatabase.LoadAssetAtPath<Sprite>(spritePath);
-        if (existing != null) return existing;
+        Texture2D texture = LoadFormalTexture(filename);
+        Rect rect = sourceRect ?? new Rect(0, 0, texture.width, texture.height);
+        if (rect.xMin < 0 || rect.yMin < 0 || rect.xMax > texture.width || rect.yMax > texture.height)
+            throw new InvalidOperationException("The formal artwork no longer matches the configured crop: " + filename);
+        string path = SpriteFolder + "/" + assetName + ".asset";
+        Sprite existing = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        if (existing != null && existing.texture == texture && existing.rect == rect && existing.border == border)
+            return existing;
+        Sprite sprite = Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, border);
+        sprite.name = assetName;
+        if (existing == null)
+        {
+            AssetDatabase.CreateAsset(sprite, path);
+            return sprite;
+        }
+        EditorUtility.CopySerialized(sprite, existing);
+        UnityEngine.Object.DestroyImmediate(sprite);
+        EditorUtility.SetDirty(existing);
+        return existing;
+    }
 
-        Texture2D texture = Load<Texture2D>(texturePath);
-        Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height),
-            new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
-        sprite.name = Path.GetFileNameWithoutExtension(spritePath);
-        AssetDatabase.CreateAsset(sprite, spritePath);
-        return sprite;
+    private static Texture2D LoadFormalTexture(string filename)
+    {
+        Texture2D cached;
+        if (FormalTextures.TryGetValue(filename, out cached)) return cached;
+        string path = SpriteFolder + "/Textures/" + filename;
+        string source = Path.Combine(Application.dataPath, ArtworkPath.Substring("Assets/".Length), filename);
+        string target = Path.Combine(Application.dataPath, path.Substring("Assets/".Length));
+        byte[] sourceBytes = File.ReadAllBytes(source);
+        bool changed = !File.Exists(target) || new FileInfo(target).Length != sourceBytes.LongLength ||
+            !SameBytes(sourceBytes, File.ReadAllBytes(target));
+        if (changed) File.WriteAllBytes(target, sourceBytes);
+        if (changed || AssetImporter.GetAtPath(path) == null)
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+        TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (importer == null) throw new InvalidOperationException("Cannot import formal UI texture: " + path);
+        bool settingsChanged = importer.textureType != TextureImporterType.Sprite ||
+            importer.spriteImportMode != SpriteImportMode.Single || importer.spritePixelsPerUnit != 100f ||
+            importer.npotScale != TextureImporterNPOTScale.None || importer.mipmapEnabled || !importer.alphaIsTransparency ||
+            importer.textureCompression != TextureImporterCompression.Uncompressed || importer.maxTextureSize != 2048 ||
+            importer.filterMode != FilterMode.Bilinear || importer.wrapMode != TextureWrapMode.Clamp;
+        if (settingsChanged)
+        {
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.spritePixelsPerUnit = 100f;
+            importer.npotScale = TextureImporterNPOTScale.None;
+            importer.mipmapEnabled = false;
+            importer.alphaIsTransparency = true;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.maxTextureSize = 2048;
+            importer.filterMode = FilterMode.Bilinear;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.SaveAndReimport();
+        }
+        Texture2D texture = Load<Texture2D>(path);
+        FormalTextures.Add(filename, texture);
+        return texture;
+    }
+
+    private static bool SameBytes(byte[] first, byte[] second)
+    {
+        if (first.Length != second.Length) return false;
+        for (int index = 0; index < first.Length; index++)
+            if (first[index] != second[index]) return false;
+        return true;
     }
 }

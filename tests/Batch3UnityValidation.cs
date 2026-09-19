@@ -33,6 +33,8 @@ public static class Batch3UnityValidation
     private static DeathLootRecord expectedCrate;
     private static DeathLootCrate collectedCrate;
     private static string collectedId;
+    private static GameplayDeathPresentationProbe deathPresentation;
+    private static Action afterDeathPresentation;
 
     static Batch3UnityValidation()
     {
@@ -91,10 +93,21 @@ public static class Batch3UnityValidation
             string runtimeError = SessionState.GetString(UnexpectedErrorKey, "");
             Check(string.IsNullOrEmpty(runtimeError), "Unexpected runtime error: " + runtimeError);
             Check(EditorApplication.timeSinceStartup <= GetTime(DeadlineKey), "Timed out during " + phase + ". " + DescribeRuntime());
+            if (EditorApplication.isPlaying && deathPresentation != null) deathPresentation.Observe();
             if (!EditorApplication.isPlaying || EditorApplication.timeSinceStartup < GetTime(ReadyKey)) return;
             switch (phase)
             {
                 case "prepare": Prepare(); break;
+                case "wait-death-presentation":
+                    if (deathPresentation != null && deathPresentation.ReadyForButtons)
+                    {
+                        Action continuation = afterDeathPresentation;
+                        afterDeathPresentation = null;
+                        deathPresentation = null;
+                        Check(continuation != null, "The completed death presentation must retain its queued destination.");
+                        continuation();
+                    }
+                    break;
                 case "first-level": if (IsLevelReady(Level)) FirstDeath(); break;
                 case "recover-first": if (IsLevelReady(Level)) CollectFirstCrate(); break;
                 case "after-first-collection": DieAfterCollection(); break;
@@ -119,6 +132,7 @@ public static class Batch3UnityValidation
 
     private static void Prepare()
     {
+        if (!GameplaySceneValidation.IsCameraFrameReady(SceneManager.GetSceneByName("UpGround"))) return;
         Check(InventoryManager.instance != null && RunSessionManager.Instance != null && GameValManager.Instance != null &&
             WeaponStatsManager.Instance != null && LevelManager.instance != null && ShopManager.Instance != null,
             "The real UpGround scene must initialize all inventory, run and price dependencies.");
@@ -266,7 +280,10 @@ public static class Batch3UnityValidation
         Check(!RunSessionManager.Instance.ActiveDeathCrate.TryCollect(FindPlayer(Level)), "The unlooted crate remains out of reach.");
         AddFood(Food, 3);
         AddWood(5);
-        DieAwayFromSpawn(FindPlayer(Level));
+        TopDownController dyingPlayer = FindPlayer(Level);
+        Check(dyingPlayer.DeathAnimator != null, "The stalled-animation fixture needs the real player's Animator.");
+        dyingPlayer.DeathAnimator.speed = 0f;
+        DieAwayFromSpawn(dyingPlayer, GameplayDeathExpectation.StalledAnimation);
         CheckSimpleCrate(3, 4);
         Check(RunSessionManager.Instance.PendingDeathCrate.Id != oldId,
             "A new death must replace an unlooted crate instead of merging the previous contents.");
@@ -280,7 +297,10 @@ public static class Batch3UnityValidation
     {
         CheckRestoredCrate();
         WeaponStatsManager.Instance.deathRetentionRate = 1f;
-        DieAwayFromSpawn(FindPlayer(Level));
+        TopDownController dyingPlayer = FindPlayer(Level);
+        Check(dyingPlayer.DeathAnimator != null, "The unavailable-Animator fixture needs the real Animator to disable temporarily.");
+        dyingPlayer.DeathAnimator.enabled = false;
+        DieAwayFromSpawn(dyingPlayer, GameplayDeathExpectation.AnimatorUnavailable);
         Check(InventoryManager.instance.GetItemCount(Food) == 1, "Full retention keeps the existing food.");
         CheckCrateCleared();
         CheckPermanentWood();
@@ -431,14 +451,15 @@ public static class Batch3UnityValidation
         Finish(true, null);
     }
 
-    private static void DieAwayFromSpawn(TopDownController player)
+    private static void DieAwayFromSpawn(TopDownController player,
+        GameplayDeathExpectation expectation = GameplayDeathExpectation.Animated)
     {
         Vector3[] directions = { Vector3.right, Vector3.forward, Vector3.left, Vector3.back };
         Vector3 destination = originalSpawn + directions[deathNumber++ % directions.Length] * 10f;
         Check(Vector3.Distance(destination, originalSpawn) > 6f, "The death fixture must remain outside the next spawn's pickup range.");
         MovePlayer(player, destination);
-        player.Die();
-        Check(RunSessionManager.Instance.Phase == RunEndPhase.ShowingResult && !RunSessionManager.Instance.IsActive &&
+        deathPresentation = GameplayDeathPresentationProbe.Begin(player, expectation);
+        Check(RunSessionManager.Instance.Phase == RunEndPhase.Settling && !RunSessionManager.Instance.IsActive &&
             Time.timeScale == 0f && !player.enabled && player.isDead, "Real player death must complete and pause settlement.");
         Check(RunSessionManager.Instance.LastResult != null, "Death must publish its result snapshot.");
         DeathLootRecord record = RunSessionManager.Instance.PendingDeathCrate;
@@ -568,6 +589,11 @@ public static class Batch3UnityValidation
 
     private static void Retry(string nextPhase)
     {
+        if (RunSessionManager.Instance.Phase == RunEndPhase.Settling)
+        {
+            QueueAfterDeath(() => Retry(nextPhase));
+            return;
+        }
         SettlementUIController ui = UnityEngine.Object.FindObjectOfType<SettlementUIController>(true);
         Check(ui != null && ui.IsVisible && ui.retryButton.interactable, "The real retry button must be available.");
         ui.retryButton.onClick.Invoke();
@@ -577,11 +603,24 @@ public static class Batch3UnityValidation
 
     private static void ReturnHome(string nextPhase)
     {
+        if (RunSessionManager.Instance.Phase == RunEndPhase.Settling)
+        {
+            QueueAfterDeath(() => ReturnHome(nextPhase));
+            return;
+        }
         SettlementUIController ui = UnityEngine.Object.FindObjectOfType<SettlementUIController>(true);
         Check(ui != null && ui.IsVisible && ui.homeButton.interactable, "The real home button must be available.");
         ui.homeButton.onClick.Invoke();
         Check(RunSessionManager.Instance.Phase == RunEndPhase.Transitioning, "Returning home must start an actual scene transition.");
         SetPhase(nextPhase, 60);
+    }
+
+    private static void QueueAfterDeath(Action continuation)
+    {
+        Check(deathPresentation != null && afterDeathPresentation == null,
+            "Every pending death presentation must queue exactly one destination.");
+        afterDeathPresentation = continuation;
+        SetPhase("wait-death-presentation", 10);
     }
 
     private static void AddExpectedPermanentWood(int amount)

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -16,6 +17,14 @@ public sealed class RunSessionManager : MonoBehaviour
     private DeathLootCrate activeDeathCrate;
     private bool collectingDeathCrate;
     private GameObject deathCratePrefab;
+    [Header("死亡结算展示")]
+    [SerializeField, Min(0f)] private float deathPresentationDelay = 1.5f;
+    [SerializeField] private string deathAnimationStateName = "Death_A";
+    private const float DeathAnimationTimeout = 5f;
+    private Coroutine deathPresentationRoutine;
+    private Animator deathAnimator;
+    private AnimatorUpdateMode previousDeathAnimatorUpdateMode;
+    private AnimatorCullingMode previousDeathAnimatorCullingMode;
     public bool IsActive => data.IsActive;
     public RunEndPhase Phase => endFlow.Phase;
     public bool IsEndingRun => Phase == RunEndPhase.Settling ||
@@ -37,6 +46,7 @@ public sealed class RunSessionManager : MonoBehaviour
 
     private void OnDestroy()
     {
+        CancelDeathPresentation();
         RestoreTimeScale();
         ClearDeathCrate();
         endFlow.Reset();
@@ -113,17 +123,18 @@ public sealed class RunSessionManager : MonoBehaviour
         InventorySnapshot before = inventory.CaptureInventory();
         DeathDropResult deathDrop = null;
         DeathLootRecord replacementCrate = null;
+        TopDownController dyingPlayer = null;
         if (reason == RunEndReason.Death)
         {
-            TopDownController player = FindLevelPlayer(levels.CurrentLevelId, false);
-            if (player == null) return false;
+            dyingPlayer = FindLevelPlayer(levels.CurrentLevelId, false);
+            if (dyingPlayer == null) return false;
             decimal retention = GetDeathRetentionRate();
             deathDrop = DeathDropCalculator.Calculate(before, inventory.GetRunGatheredCounts(), retention);
             if (deathDrop.DroppedIngredients.Count > 0 || deathDrop.DroppedGathered.Count > 0)
             {
                 RequireDeathCratePrefab();
                 replacementCrate = new DeathLootRecord(System.Guid.NewGuid().ToString("N"), levels.CurrentLevelId,
-                    player.transform.position, deathDrop.DroppedIngredients, deathDrop.DroppedGathered);
+                    dyingPlayer.transform.position, deathDrop.DroppedIngredients, deathDrop.DroppedGathered);
             }
         }
         if (settlementUI == null)
@@ -144,9 +155,97 @@ public sealed class RunSessionManager : MonoBehaviour
             if (!ownedGathered.ContainsKey(type))
                 ownedGathered[type] = GetOwnedGatheredTotal(type, inventory);
 
-        endFlow.ShowResult();
-        settlementUI.Show(result, reason, ownedGathered, () => RetryExploration(), () => ReturnToTown());
+        if (reason == RunEndReason.Death)
+        {
+            PrepareDeathAnimator(dyingPlayer.DeathAnimator);
+            deathPresentationRoutine = StartCoroutine(ShowDeathResultAfterAnimation(result, ownedGathered));
+        }
+        else
+        {
+            ShowResult(result, reason, ownedGathered);
+        }
         return true;
+    }
+
+    private void PrepareDeathAnimator(Animator animator)
+    {
+        if (animator == null || !animator.isActiveAndEnabled || animator.runtimeAnimatorController == null) return;
+        deathAnimator = animator;
+        previousDeathAnimatorUpdateMode = animator.updateMode;
+        previousDeathAnimatorCullingMode = animator.cullingMode;
+        // The world is paused and the result is already fixed; only the death pose keeps advancing.
+        animator.updateMode = AnimatorUpdateMode.UnscaledTime;
+        animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+    }
+
+    private IEnumerator ShowDeathResultAfterAnimation(RunResultSnapshot result,
+        IReadOnlyDictionary<ResourceType, long> ownedGathered)
+    {
+        float elapsed = 0f;
+        float minimumDelay = Mathf.Max(0f, deathPresentationDelay);
+        bool stateEntered = false;
+        try
+        {
+            // Let the Dead trigger reach the Animator before inspecting its state.
+            do
+            {
+                yield return null;
+                elapsed += Time.unscaledDeltaTime;
+                if (Phase != RunEndPhase.Settling || LastResult != result) yield break;
+
+                bool animationComplete = true;
+                if (deathAnimator != null && deathAnimator.isActiveAndEnabled &&
+                    deathAnimator.runtimeAnimatorController != null && deathAnimator.layerCount > 0)
+                {
+                    AnimatorStateInfo state = deathAnimator.GetCurrentAnimatorStateInfo(0);
+                    bool inDeathState = state.IsName(deathAnimationStateName);
+                    stateEntered |= inDeathState;
+                    // A missing death state still gets the normal presentation delay.
+                    bool hasDeathState = deathAnimator.HasState(0, Animator.StringToHash(deathAnimationStateName)) ||
+                        deathAnimator.HasState(0, Animator.StringToHash("Base Layer." + deathAnimationStateName));
+                    animationComplete = !hasDeathState ||
+                        (inDeathState && state.normalizedTime >= 1f && !deathAnimator.IsInTransition(0)) ||
+                        (stateEntered && !inDeathState && !deathAnimator.IsInTransition(0));
+                }
+                if (elapsed >= minimumDelay && animationComplete) break;
+                if (elapsed >= Mathf.Max(minimumDelay, DeathAnimationTimeout))
+                {
+                    Debug.LogWarning("Death animation did not finish; showing the completed run result.", this);
+                    break;
+                }
+            } while (true);
+        }
+        finally
+        {
+            RestoreDeathAnimator();
+            deathPresentationRoutine = null;
+        }
+
+        ShowResult(result, RunEndReason.Death, ownedGathered);
+    }
+
+    private void ShowResult(RunResultSnapshot result, RunEndReason reason,
+        IReadOnlyDictionary<ResourceType, long> ownedGathered)
+    {
+        if (!endFlow.ShowResult()) return;
+        settlementUI.Show(result, reason, ownedGathered, () => RetryExploration(), () => ReturnToTown());
+    }
+
+    private void RestoreDeathAnimator()
+    {
+        if (deathAnimator != null)
+        {
+            deathAnimator.updateMode = previousDeathAnimatorUpdateMode;
+            deathAnimator.cullingMode = previousDeathAnimatorCullingMode;
+        }
+        deathAnimator = null;
+    }
+
+    private void CancelDeathPresentation()
+    {
+        if (deathPresentationRoutine != null) StopCoroutine(deathPresentationRoutine);
+        deathPresentationRoutine = null;
+        RestoreDeathAnimator();
     }
 
     private void ApplyDeathDrop(InventoryManager inventory, DeathDropResult drop, DeathLootRecord replacement)

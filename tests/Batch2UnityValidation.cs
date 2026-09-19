@@ -8,6 +8,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using GourmetAbyss.CameraSystem;
 using Game.Modules;
 
@@ -31,6 +32,7 @@ public static class Batch2UnityValidation
     private static List<InventoryItemUI> injectedSlots;
     private static InventoryItemUI replacedSlot;
     private static RunResultSnapshot previousResult;
+    private static GameplayDeathPresentationProbe deathPresentation;
 
     static Batch2UnityValidation()
     {
@@ -93,6 +95,7 @@ public static class Batch2UnityValidation
             Check(string.IsNullOrEmpty(unexpectedError), "Unexpected runtime error: " + unexpectedError);
             double now = EditorApplication.timeSinceStartup;
             Check(now <= GetTime(DeadlineKey), "Timed out in phase " + phase + ". " + DescribeRuntime());
+            if (EditorApplication.isPlaying && deathPresentation != null) deathPresentation.Observe();
             if (!EditorApplication.isPlaying || now < GetTime(ReadyKey)) return;
 
             switch (phase)
@@ -115,7 +118,7 @@ public static class Batch2UnityValidation
                     if (IsLevelReady()) ValidateRetryAndDie();
                     break;
                 case "wait-after-death":
-                    ValidateDeathWaitAndReturn();
+                    if (deathPresentation != null && deathPresentation.ReadyForButtons) ValidateDeathWaitAndReturn();
                     break;
                 case "wait-home":
                     if (IsHomeReady()) ValidateHomeAndFinish();
@@ -130,6 +133,7 @@ public static class Batch2UnityValidation
 
     private static void PrepareAndEnter()
     {
+        if (!GameplaySceneValidation.IsCameraFrameReady(SceneManager.GetSceneByName("UpGround"))) return;
         InventoryManager inventory = InventoryManager.instance;
         Check(inventory != null && GameValManager.Instance != null && RunSessionManager.Instance != null &&
             LevelManager.instance != null && BattleValManager.Instance != null && PlayerStateManager.instance != null,
@@ -275,19 +279,19 @@ public static class Batch2UnityValidation
         RunResultSnapshot next = runs.CaptureCurrentResult();
         Check(next != null && next.LevelId == LevelId && next.IngredientDelta == 0 && next.KillCount == 0 &&
             next.GatheredCounts.Count == 0 && next.NewPetTypes.Count == 0 && next.NewRecipeIds.Count == 0 &&
-            next.ElapsedSeconds >= 0 && next.ElapsedSeconds < 1,
+            GameplaySceneValidation.RunElapsedAtFirstReady >= 0 && GameplaySceneValidation.RunElapsedAtFirstReady < 1 &&
+            next.ElapsedSeconds >= GameplaySceneValidation.RunElapsedAtFirstReady,
             "Retry resets run statistics and captures the retained food as the new baseline.");
         Check(!FindSettlementUI().IsVisible, "The result panel hides after a successful retry.");
         CheckSceneBindings(scene);
         SessionState.SetInt(SecondSceneKey, scene.handle);
 
-        player.Die();
-        CheckSettlement(player, RunEndReason.Death);
+        deathPresentation = GameplayDeathPresentationProbe.Begin(player);
         Check(inventory.GetItemCount(Food) == 1 && runs.LastResult.IngredientDelta == -2,
             "Default ten-percent retention keeps one of three carried food units and reports the loss as -2.");
         CheckWoodPaidOnce();
         Debug.Log("BATCH2_RETRY_REFRESH_AND_DEATH_RESULT_PASS");
-        SetPhase("wait-after-death", 15, 1.5);
+        SetPhase("wait-after-death", 10);
     }
 
     private static void ValidateDeathWaitAndReturn()
@@ -299,6 +303,8 @@ public static class Batch2UnityValidation
         Check(LevelManager.instance.CurrentLevelId == LevelId && !LevelManager.instance.IsTransitioning(),
             "Death waits for a destination selection.");
         CheckSettlement(FindPlayer(scene), RunEndReason.Death, true);
+        Check(deathPresentation.IsComplete, "The real death animation must finish before choosing the home destination.");
+        deathPresentation = null;
         SettlementUIController ui = FindSettlementUI();
         Check(ui.homeButton != null && ui.homeButton.interactable, "The actual return-home button is available.");
         ui.homeButton.onClick.Invoke();
@@ -486,6 +492,193 @@ public static class Batch2UnityValidation
     }
 }
 
+public enum GameplayDeathExpectation
+{
+    Animated,
+    AnimatorUnavailable,
+    StalledAnimation
+}
+
+// Shared death-presentation probe. It observes real Animator updates while the world is paused.
+public sealed class GameplayDeathPresentationProbe
+{
+    private static bool capturedNormalAnimation;
+    private readonly TopDownController player;
+    private readonly Animator animator;
+    private readonly AnimatorUpdateMode originalUpdateMode;
+    private readonly AnimatorCullingMode originalCullingMode;
+    private readonly bool originalAnimatorEnabled;
+    private readonly float originalAnimatorSpeed;
+    private readonly bool usableAnimator;
+    private readonly GameplayDeathExpectation expectation;
+    private readonly float startedAt;
+    private readonly RunResultSnapshot fixedResult;
+    private readonly InventorySnapshot fixedInventory;
+    private readonly Dictionary<ResourceType, int> fixedGathered;
+    private readonly Dictionary<ResourceType, int> fixedPermanent = new Dictionary<ResourceType, int>();
+    private readonly string fixedCrateId;
+    private bool sawDeathState;
+    private float firstDeathNormalized;
+    private float greatestDeathNormalized;
+    public bool IsComplete { get; private set; }
+
+    public bool ReadyForButtons
+    {
+        get
+        {
+            SettlementUIController view = UnityEngine.Object.FindObjectOfType<SettlementUIController>(true);
+            return IsComplete && view != null && view.IsVisible && view.canvasGroup.alpha >= 0.99f;
+        }
+    }
+
+    public static GameplayDeathPresentationProbe Begin(TopDownController player,
+        GameplayDeathExpectation expectation = GameplayDeathExpectation.Animated)
+    {
+        return new GameplayDeathPresentationProbe(player, expectation);
+    }
+
+    private GameplayDeathPresentationProbe(TopDownController player, GameplayDeathExpectation expectation)
+    {
+        Check(player != null && player.enabled && !player.isDead, "Death presentation must begin with a real living player.");
+        this.player = player;
+        this.expectation = expectation;
+        animator = player.DeathAnimator;
+        usableAnimator = animator != null && animator.isActiveAndEnabled && animator.runtimeAnimatorController != null && animator.layerCount > 0;
+        if (animator != null)
+        {
+            originalUpdateMode = animator.updateMode;
+            originalCullingMode = animator.cullingMode;
+            originalAnimatorEnabled = animator.enabled;
+            originalAnimatorSpeed = animator.speed;
+        }
+        if (expectation == GameplayDeathExpectation.AnimatorUnavailable)
+            Check(!usableAnimator, "The fallback fixture must make the Animator unavailable before death.");
+        else
+            Check(usableAnimator && (animator.HasState(0, Animator.StringToHash("Death_A")) ||
+                animator.HasState(0, Animator.StringToHash("Base Layer.Death_A"))), "The real player must have its authored Death_A state.");
+
+        startedAt = Time.unscaledTime;
+        player.Die();
+        RunSessionManager runs = RunSessionManager.Instance;
+        Check(runs.Phase == RunEndPhase.Settling, "Death must enter Settling immediately without displaying the result in the same call.");
+        fixedResult = runs.LastResult;
+        Check(fixedResult != null && !runs.IsActive, "Death must fix the complete result and resource allocation immediately.");
+        fixedInventory = InventoryManager.instance.CaptureInventory();
+        fixedGathered = InventoryManager.instance.GetRunGatheredCounts();
+        foreach (ResourceItem item in GameValManager.Instance.GetAllResources()) fixedPermanent[item.type] = item.count;
+        fixedCrateId = runs.PendingDeathCrate == null ? null : runs.PendingDeathCrate.Id;
+        CheckFrozenState();
+        Check(!runs.TryEndRun(RunEndReason.Death) && !runs.TryEndRun(RunEndReason.Extracted) &&
+            !runs.RetryExploration() && !runs.ReturnToTown(), "Death presentation must reject duplicate endings and both destination actions.");
+        player.Die();
+        if (runs.PendingDeathCrate != null)
+        {
+            Check(!runs.TryCollectDeathCrate(runs.PendingDeathCrate.Id) && !runs.ActiveDeathCrate.TryCollect(player),
+                "Death presentation must block both crate collection entry points.");
+        }
+        CheckOrdinaryPickupBlocked();
+        Observe();
+    }
+
+    public void Observe()
+    {
+        if (IsComplete) return;
+        RunSessionManager runs = RunSessionManager.Instance;
+        Check(ReferenceEquals(fixedResult, runs.LastResult), "Waiting for death animation must not replace or recalculate the result.");
+        CheckStableResources();
+        if (usableAnimator && animator != null && animator.isActiveAndEnabled)
+        {
+            AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
+            if (state.IsName("Death_A"))
+            {
+                if (!sawDeathState) firstDeathNormalized = state.normalizedTime;
+                sawDeathState = true;
+                greatestDeathNormalized = Mathf.Max(greatestDeathNormalized, state.normalizedTime);
+            }
+        }
+        if (runs.Phase == RunEndPhase.Settling)
+        {
+            CheckFrozenState();
+            if (usableAnimator)
+                Check(animator.updateMode == AnimatorUpdateMode.UnscaledTime && animator.cullingMode == AnimatorCullingMode.AlwaysAnimate,
+                    "Only the death Animator must keep advancing with unscaled time while the world is paused.");
+            if (!capturedNormalAnimation && expectation == GameplayDeathExpectation.Animated && sawDeathState &&
+                Time.unscaledTime - startedAt > 0.35f)
+            {
+                capturedNormalAnimation = true;
+                GameplaySceneValidation.CaptureScreenshot("death-animation-before-settlement.png");
+            }
+            return;
+        }
+        Check(runs.Phase == RunEndPhase.ShowingResult, "Death presentation must finish by showing the fixed result.");
+        float elapsed = Time.unscaledTime - startedAt;
+        Check(elapsed + 0.001f >= 1.5f, "Death settlement must not appear before the minimum 1.5-second presentation delay.");
+        if (expectation == GameplayDeathExpectation.Animated)
+            Check(sawDeathState && greatestDeathNormalized >= 1f && greatestDeathNormalized > firstDeathNormalized + 0.01f,
+                "The real Death_A animation must visibly advance and reach normalizedTime >= 1 before settlement appears.");
+        else if (expectation == GameplayDeathExpectation.StalledAnimation)
+            Check(elapsed + 0.001f >= 5f && elapsed < 7f, "A known stalled death animation must use the five-second protection, then release settlement.");
+        else
+            Check(elapsed < 4f, "An unavailable Animator must use the normal delay rather than waiting for the stalled-animation timeout.");
+        if (animator != null)
+            Check(animator.updateMode == originalUpdateMode && animator.cullingMode == originalCullingMode &&
+                animator.enabled == originalAnimatorEnabled && Mathf.Approximately(animator.speed, originalAnimatorSpeed),
+                "Death presentation must restore the Animator's original settings without changing its enabled state or speed.");
+        SettlementUIController view = UnityEngine.Object.FindObjectOfType<SettlementUIController>(true);
+        Check(view != null && view.IsVisible && Time.timeScale == 0f && !BattleValManager.Instance.IsActive,
+            "Showing death settlement must keep gameplay frozen until a destination is selected.");
+        IsComplete = true;
+        Debug.Log("DEATH_PRESENTATION_PASS " + expectation + " delay=" + elapsed.ToString("F3", CultureInfo.InvariantCulture) +
+            " normalized=" + greatestDeathNormalized.ToString("F3", CultureInfo.InvariantCulture));
+    }
+
+    private void CheckFrozenState()
+    {
+        SettlementUIController view = UnityEngine.Object.FindObjectOfType<SettlementUIController>(true);
+        Check(Time.timeScale == 0f && !BattleValManager.Instance.IsActive && PlayerStateManager.instance.currentState == PlayerState.Settlement &&
+            player.isDead && !player.enabled && !LevelManager.instance.IsTransitioning(), "Death animation must not resume combat, movement, hunger consumption or scene transition.");
+        Check(view == null || !view.IsVisible, "The result panel must stay hidden while death presentation is still Settling.");
+    }
+
+    private void CheckStableResources()
+    {
+        InventorySnapshot current = InventoryManager.instance.CaptureInventory();
+        Check(current.Slots.Count == fixedInventory.Slots.Count, "Death animation cannot resize the fixed inventory.");
+        for (int index = 0; index < current.Slots.Count; index++)
+            Check(current.Slots[index].ItemType == fixedInventory.Slots[index].ItemType && current.Slots[index].Count == fixedInventory.Slots[index].Count,
+                "Death animation and repeated gate requests cannot alter the already allocated ingredients.");
+        Dictionary<ResourceType, int> gathered = InventoryManager.instance.GetRunGatheredCounts();
+        Check(gathered.Count == fixedGathered.Count, "Death animation cannot add or remove pending gathered resource types.");
+        foreach (KeyValuePair<ResourceType, int> entry in fixedGathered)
+            Check(gathered.ContainsKey(entry.Key) && gathered[entry.Key] == entry.Value, "Death animation cannot re-credit gathered resources.");
+        foreach (KeyValuePair<ResourceType, int> entry in fixedPermanent)
+            Check(GameValManager.Instance.GetResourceCount(entry.Key) == entry.Value, "Death animation cannot re-credit or deduct permanent resources.");
+        DeathLootRecord record = RunSessionManager.Instance.PendingDeathCrate;
+        Check((record == null ? null : record.Id) == fixedCrateId, "Death animation cannot replace the fixed death crate.");
+    }
+
+    private void CheckOrdinaryPickupBlocked()
+    {
+        var pickupObject = new GameObject("DeathPresentationBlockedPickup", typeof(BoxCollider));
+        try
+        {
+            LootCollector pickup = pickupObject.AddComponent<LootCollector>();
+            pickup.SetResourceInfo(ResourceType.LootMushroom, 1, LootStorageMode.SlotInventory);
+            typeof(LootCollector).GetField("player", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(pickup, player.transform);
+            typeof(LootCollector).GetMethod("Collect", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(pickup, null);
+            Check((int)typeof(LootCollector).GetField("resourceAmount", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pickup) == 1,
+                "Ordinary item pickups must remain uncollected during the death presentation.");
+            CheckStableResources();
+        }
+        finally { UnityEngine.Object.Destroy(pickupObject); }
+    }
+
+    private static void Check(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+}
+
 // Shared by Batch1/3 and FinalGameplayValidation; include this file when copying those runners.
 public static class GameplaySceneValidation
 {
@@ -497,6 +690,11 @@ public static class GameplaySceneValidation
     private static int homeDirectorId;
     private static int observedSceneHandle;
     private static int observedFrame;
+    private static double observedReadyAt;
+    private static int hudSortingOrder;
+    private static int hudSortingLayer;
+    private static readonly HashSet<string> capturedHudScenes = new HashSet<string>();
+    public static double RunElapsedAtFirstReady { get; private set; }
 
     public static void CaptureHomeState()
     {
@@ -512,6 +710,11 @@ public static class GameplaySceneValidation
         CameraDirector director = camera == null ? null : camera.GetComponent<CameraDirector>();
         Check(director != null && camera.gameObject.scene.name == "UpGround", "The real home scene must provide its authored camera director.");
         homeDirectorId = director.GetInstanceID();
+        Canvas hud = KeepMainCamera.Instance == null ? null : KeepMainCamera.Instance.mainUICanvas;
+        Check(hud != null, "The original home HUD canvas must exist.");
+        hudSortingOrder = hud.sortingOrder;
+        hudSortingLayer = hud.sortingLayerID;
+        capturedHudScenes.Clear();
         observedSceneHandle = 0;
         observedFrame = -1;
         CheckSceneBindings(SceneManager.GetSceneByName("UpGround"));
@@ -524,10 +727,28 @@ public static class GameplaySceneValidation
         {
             observedSceneHandle = scene.handle;
             observedFrame = Time.frameCount;
+            observedReadyAt = EditorApplication.timeSinceStartup + 0.5;
+            RunResultSnapshot first = RunSessionManager.Instance != null && RunSessionManager.Instance.IsActive
+                ? RunSessionManager.Instance.CaptureCurrentResult() : null;
+            RunElapsedAtFirstReady = first == null ? 0 : first.ElapsedSeconds;
             return false;
         }
         // The scene-ready callback may precede CameraDirector.LateUpdate; observe a completed frame first.
-        return Time.frameCount > observedFrame + 1;
+        if (Time.frameCount <= observedFrame + 1 || EditorApplication.timeSinceStartup < observedReadyAt) return false;
+        GameObject mainUI = LevelManager.Instance == null ? null : LevelManager.Instance.mainUI;
+        if (mainUI == null || !mainUI.activeInHierarchy) return false;
+        Animator entrance = mainUI.GetComponent<Animator>();
+        if (entrance != null && entrance.isActiveAndEnabled && entrance.runtimeAnimatorController != null && entrance.layerCount > 0)
+        {
+            AnimatorStateInfo current = entrance.GetCurrentAnimatorStateInfo(0);
+            if (current.IsName("LevelUIShowUp") && current.normalizedTime < 1f) return false;
+            if (entrance.IsInTransition(0))
+            {
+                AnimatorStateInfo next = entrance.GetNextAnimatorStateInfo(0);
+                if (next.IsName("LevelUIShowUp") && next.normalizedTime < 1f) return false;
+            }
+        }
+        return true;
     }
 
     public static void CheckSceneBindings(Scene expected)
@@ -579,10 +800,101 @@ public static class GameplaySceneValidation
         }
 
         KeepMainCamera binding = KeepMainCamera.Instance;
-        Check(binding != null && KeepMainCamera.instance == binding && binding.mainUICanvas != null && binding.mainUICanvas.worldCamera == camera,
-            "The persistent main UI must use the destination camera through the upstream singleton alias.");
+        Check(binding != null && KeepMainCamera.instance == binding && binding.mainUICanvas != null,
+            "The persistent main UI must retain its canvas through the upstream singleton alias.");
+        Canvas hud = binding.mainUICanvas;
+        Check(hud.renderMode == RenderMode.ScreenSpaceOverlay && hud.isActiveAndEnabled &&
+            Mathf.Abs(hud.transform.lossyScale.x) > 0.001f && Mathf.Abs(hud.transform.lossyScale.y) > 0.001f && hud.scaleFactor > 0f &&
+            hud.sortingOrder == hudSortingOrder && hud.sortingLayerID == hudSortingLayer,
+            "The upstream Overlay HUD must remain visible with its original sorting; it does not require a camera reference.");
         Check(binding.transitionAnimator != null && binding.transitionAnimator.mainCamera == camera,
             "The transition effect must use the destination camera.");
+        CheckHudControls(expected, hud);
+        if (capturedHudScenes.Add(expected.name)) CaptureScreenshot("hud-" + expected.name + ".png");
+    }
+
+    private static void CheckHudControls(Scene scene, Canvas hud)
+    {
+        Transform root = LevelManager.Instance.mainUI.transform;
+        Canvas.ForceUpdateCanvases();
+        Transform moneyTransform = root.Find("ButtonContainer/MoneyBlank/Image/Text (Legacy)");
+        Text money = moneyTransform == null ? null : moneyTransform.GetComponent<Text>();
+        CheckVisibleGraphic(money, "Currency");
+        HomeUIManager presenter = null;
+        foreach (HomeUIManager candidate in UnityEngine.Object.FindObjectsOfType<HomeUIManager>(true))
+            if (candidate.textMoneyVal == money) { presenter = candidate; break; }
+        int displayedMoney;
+        Check(presenter != null && int.TryParse(money.text, NumberStyles.Integer, CultureInfo.InvariantCulture, out displayedMoney),
+            "The real currency text must be bound to HomeUIManager and display a numeric balance.");
+        displayedMoney = int.Parse(money.text, CultureInfo.InvariantCulture);
+        int actualMoney = GameValManager.Instance.GetResourceCount(ResourceType.Money);
+        FieldInfo scrollingField = typeof(HomeUIManager).GetField("_moneyScrolling", BindingFlags.Instance | BindingFlags.NonPublic);
+        bool scrolling = scrollingField != null && (bool)scrollingField.GetValue(presenter);
+        if (scrolling)
+        {
+            float start = (float)typeof(HomeUIManager).GetField("_moneyScrollStartValue", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(presenter);
+            int target = (int)typeof(HomeUIManager).GetField("_moneyTarget", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(presenter);
+            Check(target == actualMoney && displayedMoney >= Mathf.Min(Mathf.RoundToInt(start), target) && displayedMoney <= Mathf.Max(Mathf.RoundToInt(start), target),
+                "Animated currency must move between the previous display and the actual current balance.");
+        }
+        else Check(displayedMoney == actualMoney, "Visible currency must match the actual balance once its count animation finishes.");
+
+        Transform bars = root.Find("LeftBottom");
+        Check(bars != null, "The actual HUD must retain its LeftBottom controls.");
+        if (scene.name == "UpGround")
+        {
+            foreach (GameObject battleControl in UIManager.Instance.BattleUI)
+                Check(battleControl != null && !battleControl.activeInHierarchy,
+                    "The original home rule keeps each configured battle control hidden.");
+            return;
+        }
+        BattleValManager battle = BattleValManager.Instance;
+        CheckHudBar(root, "LeftBottom/Oxg/Progress", battle.oxgImage, battle.OxygenPercentage, "Hunger");
+        CheckHudBar(root, "LeftBottom/MainWeaponProgress/Progress", battle.weaponImage, battle.PrimaryAmmoPercentage, "Primary ammo");
+        Transform secondary = root.Find("LeftBottom/SubWeaponProgress/Progress");
+        Check(secondary != null, "The actual secondary-ammo HUD control must exist.");
+        if (WeaponStatsManager.Instance.isSecondaryEnable)
+            CheckHudBar(root, "LeftBottom/SubWeaponProgress/Progress", battle.subWeaponImage, battle.SecondaryAmmoPercentage, "Secondary ammo");
+        else Check(!secondary.gameObject.activeInHierarchy, "Locked secondary weapons must keep their original hidden-HUD behavior.");
+        SettlementUIController settlement = UnityEngine.Object.FindObjectOfType<SettlementUIController>(true);
+        if (settlement != null)
+        {
+            Canvas resultCanvas = settlement.GetComponent<Canvas>();
+            Check(resultCanvas != null && (SortingLayer.GetLayerValueFromID(resultCanvas.sortingLayerID) > SortingLayer.GetLayerValueFromID(hud.sortingLayerID) ||
+                (resultCanvas.sortingLayerID == hud.sortingLayerID && resultCanvas.sortingOrder > hud.sortingOrder)),
+                "The settlement overlay must sort above the normal HUD.");
+        }
+    }
+
+    private static void CheckHudBar(Transform root, string path, Image expectedBinding, float expectedFill, string label)
+    {
+        Transform found = root.Find(path);
+        Image image = found == null ? null : found.GetComponent<Image>();
+        CheckVisibleGraphic(image, label);
+        Check(image == expectedBinding && image.sprite != null && image.type == Image.Type.Filled &&
+            !float.IsNaN(image.fillAmount) && Mathf.Abs(image.fillAmount - Mathf.Clamp01(expectedFill)) <= 0.03f,
+            label + " must use its actual BattleValManager binding, a sprite, and the corresponding current fill amount.");
+    }
+
+    private static void CheckVisibleGraphic(Graphic graphic, string label)
+    {
+        Check(graphic != null && graphic.isActiveAndEnabled && graphic.color.a > 0f && !graphic.canvasRenderer.cull &&
+            graphic.canvasRenderer.GetAlpha() > 0f && Mathf.Abs(graphic.transform.lossyScale.x) > 0.001f &&
+            Mathf.Abs(graphic.transform.lossyScale.y) > 0.001f, label + " must be an active, nonculled HUD graphic with a visible scale and alpha.");
+    }
+
+    public static void CaptureScreenshot(string filename)
+    {
+        if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+        {
+            Debug.Log("GAMEPLAY_SCREENSHOT_SKIPPED_NO_GRAPHICS " + filename);
+            return;
+        }
+        string directory = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "Screenshots"));
+        System.IO.Directory.CreateDirectory(directory);
+        string path = System.IO.Path.Combine(directory, filename);
+        ScreenCapture.CaptureScreenshot(path);
+        Debug.Log("GAMEPLAY_SCREENSHOT_REQUESTED " + path);
     }
 
     private static void CheckCoreSingletons()

@@ -37,6 +37,7 @@ public static class SettlementVisualValidation
     private static readonly Shot[] shots =
     {
         new Shot("settlement-success-1920x1080", 1920, 1080, Fixture.Success),
+        new Shot("settlement-bag-bottom-1920x1080", 1920, 1080, Fixture.Success, true),
         new Shot("settlement-success-1280x720", 1280, 720, Fixture.Success),
         new Shot("settlement-death-1024x768", 1024, 768, Fixture.Death),
         new Shot("settlement-large-numbers-1024x768", 1024, 768, Fixture.LargeNumbers),
@@ -291,6 +292,8 @@ public static class SettlementVisualValidation
             {
                 { ResourceType.LootPumkin, shot.fixture == Fixture.LargeNumbers ? 2L * int.MaxValue : 821L }
             }, () => { }, () => { });
+        // Let ScrollRect's LateUpdate synchronize its thumb before the screenshot.
+        view.inventoryScroll.verticalNormalizedPosition = shot.bagBottom ? 0f : 1f;
         if (shot.fixture == Fixture.Death)
             view.SetStatusMessage("\u91c7\u96c6\u7269\u4ed3\u5e93\u7a7a\u95f4\u4e0d\u8db3\uff0c\u8bf7\u5148\u8fd4\u56de\u5c0f\u9547\u6574\u7406\u8d44\u6e90\uff0c\u7136\u540e\u91cd\u65b0\u51fa\u53d1\u3002");
         readyAt = EditorApplication.timeSinceStartup + 0.55;
@@ -302,6 +305,7 @@ public static class SettlementVisualValidation
         LayoutRebuilder.ForceRebuildLayoutImmediate(view.detailsContent);
         LayoutRebuilder.ForceRebuildLayoutImmediate(view.inventoryContent);
         view.detailsScroll.verticalNormalizedPosition = 1f;
+        view.inventoryScroll.verticalNormalizedPosition = shot.bagBottom ? 0f : 1f;
         Canvas.ForceUpdateCanvases();
         if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset)
             RenderPipeline.SubmitRenderRequest(renderCamera, new UniversalRenderPipeline.SingleCameraRequest { destination = renderTarget });
@@ -382,11 +386,18 @@ public static class SettlementVisualValidation
         }
         int visibleSlots = 0;
         int visibleIcons = 0;
+        var inventoryRows = new List<RectTransform>();
+        Rect inventoryViewport = ScreenBounds(view.inventoryScroll.viewport);
         foreach (Transform entry in view.inventoryContent)
         {
             if (!entry.gameObject.activeInHierarchy) continue;
-            Rect slot = ScreenBounds(entry.GetComponent<RectTransform>());
-            Check(Contains(ScreenBounds(view.inventoryScroll.viewport), slot, 2f), "All owned bag slots must fit in the viewport.");
+            RectTransform row = entry.GetComponent<RectTransform>();
+            inventoryRows.Add(row);
+            Rect slot = ScreenBounds(row);
+            Check(slot.xMin >= inventoryViewport.xMin - 2f && slot.xMax <= inventoryViewport.xMax + 2f,
+                "The vertical bag must not clip slots horizontally.");
+            Check(Contains(ScreenBounds(view.inventoryContent), slot, 2f),
+                "Every owned slot must be contained in the scrollable inventory content.");
             visibleSlots++;
             Image icon = entry.Find("Icon").GetComponent<Image>();
             if (icon.gameObject.activeInHierarchy && icon.sprite != null) visibleIcons++;
@@ -396,11 +407,23 @@ public static class SettlementVisualValidation
             if (!slot.IsEmpty) expectedIcons++;
         Check(visibleSlots == result.Inventory.Slots.Count, "All owned slots, including empty slots, must render.");
         Check(visibleIcons == expectedIcons, "Every occupied ingredient slot must use actual artwork.");
+        Check(view.inventoryScroll.vertical, "The formal vertical bag must support scrolling after expansion.");
+        view.inventoryScroll.verticalNormalizedPosition = 1f;
+        Canvas.ForceUpdateCanvases();
+        Check(Contains(inventoryViewport, ScreenBounds(inventoryRows[0]), 2f), "The first bag slot must be fully reachable.");
+        view.inventoryScroll.verticalNormalizedPosition = 0f;
+        Canvas.ForceUpdateCanvases();
+        Check(Contains(inventoryViewport, ScreenBounds(inventoryRows[inventoryRows.Count - 1]), 2f),
+            "The final unlocked bag slot must be fully reachable by scrolling.");
+        view.inventoryScroll.verticalNormalizedPosition = shot.bagBottom ? 0f : 1f;
+        Canvas.ForceUpdateCanvases();
         if (shot.fixture == Fixture.SingleEmpty)
             Check(view.inventoryContent.GetComponent<GridLayoutGroup>().constraintCount == 1,
                 "The one-slot layout must adapt to a single column.");
         report.slotCount = visibleSlots;
         report.ingredientIconCount = visibleIcons;
+        report.bagScrolledToBottom = shot.bagBottom;
+        InspectFormalArtwork(report);
         InspectRewardPresentation(shot, result, report);
 
         Color32[] pixels = image.GetPixels32();
@@ -425,6 +448,26 @@ public static class SettlementVisualValidation
         return report;
     }
 
+    private static void InspectFormalArtwork(ShotReport report)
+    {
+        var texturePaths = new HashSet<string>();
+        foreach (Image graphic in view.GetComponentsInChildren<Image>(true))
+            if (graphic.sprite != null)
+                texturePaths.Add(AssetDatabase.GetAssetPath(graphic.sprite.texture));
+        const string folder = "Assets/NewVersion/UI/战斗结算界面/";
+        const string importedFolder = "Assets/Resources/UI/SettlementArt/Textures/";
+        string project = Directory.GetParent(Application.dataPath).FullName;
+        foreach (string file in new[] { "结算底板.png", "结算标题.png", "背包.png", "获取物展示框.png", "文本展示框.png", "按键.png", "装饰.png" })
+        {
+            string usedPath = texturePaths.Contains(folder + file) ? folder + file : importedFolder + file;
+            Check(texturePaths.Contains(usedPath), "The settlement must use its approved artwork: " + file);
+            Check(System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(Path.Combine(project, folder + file)),
+                File.ReadAllBytes(Path.Combine(project, usedPath))),
+                "Presentation texture copies must preserve the approved artwork's exact bytes: " + file);
+            report.formalArtwork.Add(usedPath);
+        }
+    }
+
     private static void InspectSectionHeaders(Shot shot, ShotReport report, Color32[] pixels)
     {
         foreach (GameObject section in new[] { view.petSection, view.recipeSection, view.gatheredSection })
@@ -447,10 +490,10 @@ public static class SettlementVisualValidation
                 for (int x = minX; x < maxX; x++)
                 {
                     Color32 pixel = pixels[y * shot.width + x];
-                    if (pixel.r < 160 && pixel.g < 140 && pixel.b < 125) inkPixels++;
+                    if (pixel.r > 195 && pixel.g > 175 && pixel.b > 145) inkPixels++;
                 }
             }
-            Check(inkPixels > 8, "The screenshot must contain visible dark header strokes: " + header.text);
+            Check(inkPixels > 8, "The screenshot must contain visible light header strokes on the formal green panel: " + header.text);
             report.visibleHeaders.Add(header.text);
             report.headerInkPixels += inkPixels;
         }
@@ -610,13 +653,15 @@ public static class SettlementVisualValidation
         public readonly int width;
         public readonly int height;
         public readonly Fixture fixture;
+        public readonly bool bagBottom;
         public bool death { get { return fixture == Fixture.Death || fixture == Fixture.LargeNumbers; } }
-        public Shot(string name, int width, int height, Fixture fixture)
+        public Shot(string name, int width, int height, Fixture fixture, bool bagBottom = false)
         {
             this.name = name;
             this.width = width;
             this.height = height;
             this.fixture = fixture;
+            this.bagBottom = bagBottom;
         }
     }
 
@@ -633,6 +678,8 @@ public static class SettlementVisualValidation
         public int pngBytes;
         public int slotCount;
         public int ingredientIconCount;
+        public bool bagScrolledToBottom;
+        public List<string> formalArtwork = new List<string>();
         public int newMarkerCount;
         public string petIconPath;
         public string woodIconPath;
