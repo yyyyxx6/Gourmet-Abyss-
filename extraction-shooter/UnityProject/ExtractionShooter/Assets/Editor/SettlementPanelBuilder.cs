@@ -98,7 +98,7 @@ public static class SettlementPanelBuilder
             view.inventorySummaryText.verticalOverflow = VerticalWrapMode.Overflow;
 
             view.detailsScroll = MakeScroll("Details", body, new Vector2(400, -232),
-                new Vector2(1100, 410), out RectTransform detailsContent, 18);
+                new Vector2(1100, 576), out RectTransform detailsContent, 18);
             view.detailsContent = detailsContent;
             AddVerticalLayout(detailsContent, 10);
             view.petSection = MakeSection("Pets", detailsContent, "\u65b0\u5ba0\u7269", font, rewardSprite, out RectTransform pets);
@@ -108,10 +108,9 @@ public static class SettlementPanelBuilder
             view.gatheredSection = MakeSection("Gathered", detailsContent, "\u91c7\u96c6\u7269", font, rewardSprite, out RectTransform gathered);
             view.gatheredContent = gathered;
 
-            RectTransform statistics = MakeRect("Statistics", body);
-            PlaceTopLeft(statistics, 400, 652, 1100, 156);
+            RectTransform statistics = MakeRect("Statistics", detailsContent);
             AddVerticalLayout(statistics, 6);
-            view.ingredientDeltaText = MakeStat(statistics, "IngredientDelta", "\u83b7\u5f97\u98df\u6750\u6570", font, statisticSprite);
+            view.ingredientDeltaText = MakeStat(statistics, "IngredientDelta", "\u5e26\u51fa\u98df\u6750\u6570", font, statisticSprite);
             view.durationText = MakeStat(statistics, "Duration", "\u5192\u9669\u65f6\u957f", font, statisticSprite);
             view.killsText = MakeStat(statistics, "Kills", "\u51fb\u6740\u602a\u7269\u6570", font, statisticSprite);
 

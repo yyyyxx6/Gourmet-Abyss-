@@ -132,6 +132,8 @@ public sealed class RunResultSnapshot
     public double ElapsedSeconds { get; }
     public int KillCount { get; }
     public InventorySnapshot Inventory { get; }
+    /// <summary>Actual ingredient quantity carried out in this fixed result, including carried-in food.</summary>
+    public long CarriedIngredientCount { get; }
     public long IngredientDelta { get; }
     public IReadOnlyDictionary<ResourceType, int> GatheredCounts { get; }
     public IReadOnlyDictionary<ResourceType, int> RetainedGatheredCounts { get; }
@@ -153,6 +155,10 @@ public sealed class RunResultSnapshot
         ElapsedSeconds = elapsedSeconds;
         KillCount = killCount;
         Inventory = inventory;
+        long carriedIngredients = 0;
+        foreach (InventorySlotSnapshot slot in inventory.Slots)
+            if (ResourceStorageRules.IsIngredient(slot.ItemType)) carriedIngredients += slot.Count;
+        CarriedIngredientCount = carriedIngredients;
         IngredientDelta = ingredientDelta;
         GatheredCounts = new ReadOnlyDictionary<ResourceType, int>(new Dictionary<ResourceType, int>(gatheredCounts));
         RetainedGatheredCounts = new ReadOnlyDictionary<ResourceType, int>(new Dictionary<ResourceType, int>(retainedGatheredCounts));

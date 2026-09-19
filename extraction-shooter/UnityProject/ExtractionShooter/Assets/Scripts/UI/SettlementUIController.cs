@@ -204,11 +204,8 @@ public sealed class SettlementUIController : MonoBehaviour
                 "\u62e5\u6709 " + owned.ToString(CultureInfo.InvariantCulture), false, outcome);
         }
 
-        ingredientDeltaText.text = result.IngredientDelta > 0
-            ? "+" + result.IngredientDelta.ToString(CultureInfo.InvariantCulture)
-            : result.IngredientDelta.ToString(CultureInfo.InvariantCulture);
-        ingredientDeltaText.color = result.IngredientDelta < 0
-            ? new Color32(255, 166, 151, 255) : new Color32(248, 235, 195, 255);
+        ingredientDeltaText.text = result.CarriedIngredientCount.ToString(CultureInfo.InvariantCulture);
+        ingredientDeltaText.color = new Color32(248, 235, 195, 255);
         durationText.text = FormatDuration(result.ElapsedSeconds);
         killsText.text = result.KillCount.ToString(CultureInfo.InvariantCulture);
 
@@ -221,6 +218,8 @@ public sealed class SettlementUIController : MonoBehaviour
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(detailsContent);
         LayoutRebuilder.ForceRebuildLayoutImmediate(inventoryContent);
+        inventoryScroll.StopMovement();
+        detailsScroll.StopMovement();
         inventoryScroll.verticalNormalizedPosition = 1f;
         detailsScroll.verticalNormalizedPosition = 1f;
         if (fadeRoutine != null) StopCoroutine(fadeRoutine);

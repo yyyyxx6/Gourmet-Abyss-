@@ -29,6 +29,8 @@ public static class SettlementVisualValidation
     private static RunResultSnapshot deathResult;
     private static RunResultSnapshot largeResult;
     private static RunResultSnapshot singleEmptyResult;
+    private static RunResultSnapshot feedbackResult;
+    private static RunResultSnapshot manyRewardsResult;
     private static SettlementPresentationCatalog catalog;
     private static Sprite woodIcon;
     private static Sprite petIcon;
@@ -41,7 +43,10 @@ public static class SettlementVisualValidation
         new Shot("settlement-success-1280x720", 1280, 720, Fixture.Success),
         new Shot("settlement-death-1024x768", 1024, 768, Fixture.Death),
         new Shot("settlement-large-numbers-1024x768", 1024, 768, Fixture.LargeNumbers),
-        new Shot("settlement-single-empty-1280x720", 1280, 720, Fixture.SingleEmpty)
+        new Shot("settlement-feedback-2560x1440", 2560, 1440, Fixture.Feedback),
+        new Shot("settlement-many-rewards-top-1280x720", 1280, 720, Fixture.ManyRewards),
+        new Shot("settlement-single-empty-1280x720", 1280, 720, Fixture.SingleEmpty),
+        new Shot("settlement-many-rewards-bottom-1280x720", 1280, 720, Fixture.ManyRewards, false, true)
     };
 
     static SettlementVisualValidation()
@@ -190,6 +195,29 @@ public static class SettlementVisualValidation
             new InventorySlotSnapshot(0, ResourceType.None, 0, 4)
         }), new Dictionary<ResourceType, int>());
 
+        var feedback = new RunSessionData();
+        feedback.Begin("Layer1", new Dictionary<ResourceType, int> { { ResourceType.LootMushroom, 1 } });
+        feedback.AdvanceTime(33);
+        for (int index = 0; index < 4; index++) feedback.RecordKill();
+        var feedbackDrop = DeathDropCalculator.Calculate(new InventorySnapshot(new[]
+        {
+            new InventorySlotSnapshot(0, ResourceType.LootMushroom, 4, 4)
+        }), new Dictionary<ResourceType, int>(), 0.1m);
+        feedbackResult = feedback.Complete(feedbackDrop.RetainedInventory, feedbackDrop.RetainedGathered);
+        Check(feedbackResult.CarriedIngredientCount == 1 && feedbackResult.IngredientDelta == 0,
+            "The reported one carried in / four before death case must retain one while its separate net delta is zero.");
+
+        var many = new RunSessionData();
+        many.Begin("Layer1", new Dictionary<ResourceType, int>());
+        many.RecordPetUnlocked(PetType.FlyingCompanion);
+        many.RecordGathered(ResourceType.LootPumkin, 18);
+        foreach (DishRecipe candidate in RestaurantPanel.instance.dishRecipes)
+            if (candidate != null && candidate.dishID >= 0 && candidate.dishIcon != null && !string.IsNullOrWhiteSpace(candidate.dishName))
+                many.RecordRecipeUnlocked(candidate.dishID);
+        manyRewardsResult = many.Complete(successResult.Inventory,
+            new Dictionary<ResourceType, int> { { ResourceType.LootPumkin, 18 } });
+        Check(manyRewardsResult.NewRecipeIds.Count >= 2, "Use multiple actual recipe rewards to exercise overflow scrolling.");
+
         GameObject prefab = Resources.Load<GameObject>("UI/SettlementPanel");
         Check(prefab != null, "Build Resources/UI/SettlementPanel before running visual validation.");
         GameObject panel = UnityEngine.Object.Instantiate(prefab);
@@ -262,6 +290,8 @@ public static class SettlementVisualValidation
             case Fixture.Death: return deathResult;
             case Fixture.LargeNumbers: return largeResult;
             case Fixture.SingleEmpty: return singleEmptyResult;
+            case Fixture.Feedback: return feedbackResult;
+            case Fixture.ManyRewards: return manyRewardsResult;
             default: return successResult;
         }
     }
@@ -294,6 +324,7 @@ public static class SettlementVisualValidation
             }, () => { }, () => { });
         // Let ScrollRect's LateUpdate synchronize its thumb before the screenshot.
         view.inventoryScroll.verticalNormalizedPosition = shot.bagBottom ? 0f : 1f;
+        view.detailsScroll.verticalNormalizedPosition = shot.detailsBottom ? 0f : 1f;
         if (shot.fixture == Fixture.Death)
             view.SetStatusMessage("\u91c7\u96c6\u7269\u4ed3\u5e93\u7a7a\u95f4\u4e0d\u8db3\uff0c\u8bf7\u5148\u8fd4\u56de\u5c0f\u9547\u6574\u7406\u8d44\u6e90\uff0c\u7136\u540e\u91cd\u65b0\u51fa\u53d1\u3002");
         readyAt = EditorApplication.timeSinceStartup + 0.55;
@@ -304,7 +335,7 @@ public static class SettlementVisualValidation
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(view.detailsContent);
         LayoutRebuilder.ForceRebuildLayoutImmediate(view.inventoryContent);
-        view.detailsScroll.verticalNormalizedPosition = 1f;
+        view.detailsScroll.verticalNormalizedPosition = shot.detailsBottom ? 0f : 1f;
         view.inventoryScroll.verticalNormalizedPosition = shot.bagBottom ? 0f : 1f;
         Canvas.ForceUpdateCanvases();
         if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset)
@@ -340,11 +371,12 @@ public static class SettlementVisualValidation
         Check(view.petSection.activeSelf == (result.NewPetTypes.Count > 0) &&
             view.recipeSection.activeSelf == (result.NewRecipeIds.Count > 0) &&
             view.gatheredSection.activeSelf == (result.GatheredCounts.Count > 0), "Only populated reward categories may be visible.");
-        string expectedDelta = result.IngredientDelta > 0 ? "+" + result.IngredientDelta : result.IngredientDelta.ToString(CultureInfo.InvariantCulture);
-        Check(view.ingredientDeltaText.text == expectedDelta, "The exact food delta must be displayed.");
-        Check(!shot.death || view.ingredientDeltaText.text == "-10", "Death must show two retained food units minus the carried-in twelve.");
-        Check(!shot.death || view.ingredientDeltaText.color.r > view.ingredientDeltaText.color.g,
-            "Negative ingredient changes must use red text.");
+        string expectedCount = result.CarriedIngredientCount.ToString(CultureInfo.InvariantCulture);
+        Check(view.ingredientDeltaText.text == expectedCount, "The exact carried-out food total must be displayed without a sign.");
+        Check(view.ingredientDeltaText.transform.parent.Find("Label").GetComponent<Text>().text == "带出食材数",
+            "The label must clearly name the carried-out total.");
+        if (shot.fixture == Fixture.Feedback)
+            Check(view.ingredientDeltaText.text == "1", "The reported one-food exit must display 1 even with a zero net delta.");
 
         ShotReport report = new ShotReport
         {
@@ -361,24 +393,45 @@ public static class SettlementVisualValidation
         AddBounds(report, "Title", view.titleText.rectTransform, shot);
         AddBounds(report, "InventoryViewport", view.inventoryScroll.viewport, shot);
         AddBounds(report, "DetailsViewport", view.detailsScroll.viewport, shot);
-        RectTransform statistics = view.transform.Find("Panel/Statistics").GetComponent<RectTransform>();
-        Rect statisticsBounds = AddBounds(report, "Statistics", statistics, shot);
+        RectTransform statistics = view.detailsContent.Find("Statistics").GetComponent<RectTransform>();
+        Rect statisticsBounds = ScreenBounds(statistics);
         foreach (Text stat in new[] { view.ingredientDeltaText, view.durationText, view.killsText })
         {
-            Check(!stat.transform.IsChildOf(view.detailsContent) && stat.transform.IsChildOf(statistics),
-                "Food delta, duration and kills must remain outside the scrolling rewards.");
-            AddBounds(report, stat.transform.parent.name, stat.rectTransform, shot);
+            Check(stat.transform.IsChildOf(view.detailsContent) && stat.transform.IsChildOf(statistics),
+                "All summary statistics must follow the rewards in the shared content layout.");
         }
-        Check(!statisticsBounds.Overlaps(ScreenBounds(view.detailsScroll.viewport)), "Reward scrolling must not cover the fixed statistics.");
-        Vector2 statsPosition = statisticsBounds.position;
+        Rect detailsViewport = ScreenBounds(view.detailsScroll.viewport);
+        float expectedTop = ScreenBounds(view.detailsContent).yMax;
+        float gap = view.detailsContent.GetComponent<VerticalLayoutGroup>().spacing * renderCanvas.scaleFactor;
+        Transform lastActive = null;
+        foreach (Transform child in view.detailsContent)
+        {
+            if (!child.gameObject.activeInHierarchy) continue;
+            Rect bounds = ScreenBounds(child.GetComponent<RectTransform>());
+            Check(Mathf.Abs(bounds.yMax - expectedTop) < 2f, "Visible entries must align consecutively without empty-category gaps: " + child.name);
+            expectedTop = bounds.yMin - gap;
+            lastActive = child;
+        }
+        Check(lastActive == statistics, "Statistics must immediately follow the last populated reward category.");
+        bool overflow = view.detailsContent.rect.height > view.detailsScroll.viewport.rect.height + 1f;
+        if (shot.fixture == Fixture.ManyRewards) Check(overflow, "The many-reward fixture must actually overflow the viewport.");
+        if (!overflow || shot.detailsBottom)
+            Check(Contains(detailsViewport, statisticsBounds, 2f), "All three statistics must be fully visible when the list fits or is scrolled to the end.");
+        if (shot.fixture == Fixture.SingleEmpty || shot.fixture == Fixture.Feedback)
+            Check(Mathf.Abs(statisticsBounds.yMax - detailsViewport.yMax) < 2f,
+                "With no reward categories, statistics must begin at the top of the right-side viewport.");
         view.detailsScroll.verticalNormalizedPosition = 0f;
         Canvas.ForceUpdateCanvases();
-        Check(Vector2.Distance(statsPosition, ScreenBounds(statistics).position) < 0.1f, "Scrolling rewards must not move statistics.");
-        view.detailsScroll.verticalNormalizedPosition = 1f;
+        Check(Contains(detailsViewport, ScreenBounds(statistics), 2f), "Scrolling to the end must expose every summary statistic.");
+        foreach (Text stat in new[] { view.ingredientDeltaText, view.durationText, view.killsText }) AssertRenderedTextComplete(stat);
+        view.detailsScroll.verticalNormalizedPosition = shot.detailsBottom ? 0f : 1f;
         Canvas.ForceUpdateCanvases();
         Rect retry = AddBounds(report, "Retry", view.retryButton.GetComponent<RectTransform>(), shot);
         Rect home = AddBounds(report, "Home", view.homeButton.GetComponent<RectTransform>(), shot);
         Check(!retry.Overlaps(home), "The two navigation buttons must not overlap.");
+        Check(!detailsViewport.Overlaps(retry) && !detailsViewport.Overlaps(home) &&
+            view.detailsScroll.viewport.GetComponent<RectMask2D>() != null,
+            "Long result lists must be clipped above both destination buttons.");
         if (view.statusText.gameObject.activeInHierarchy)
         {
             Rect status = AddBounds(report, "Status", view.statusText.rectTransform, shot);
@@ -423,6 +476,8 @@ public static class SettlementVisualValidation
         report.slotCount = visibleSlots;
         report.ingredientIconCount = visibleIcons;
         report.bagScrolledToBottom = shot.bagBottom;
+        report.detailsScrolledToBottom = shot.detailsBottom;
+        report.carriedIngredientText = view.ingredientDeltaText.text;
         InspectFormalArtwork(report);
         InspectRewardPresentation(shot, result, report);
 
@@ -474,10 +529,11 @@ public static class SettlementVisualValidation
         {
             if (!section.activeInHierarchy) continue;
             Text header = section.transform.Find("Header").GetComponent<Text>();
+            Rect bounds = ScreenBounds(header.rectTransform);
+            if (!Contains(ScreenBounds(view.detailsScroll.viewport), bounds, 2f) && shot.fixture == Fixture.ManyRewards) continue;
             AssertRenderedTextComplete(header);
             Check(header.cachedTextGenerator.vertexCount > 4 && !header.canvasRenderer.cull,
                 "The visible section header must produce unculled glyph geometry: " + header.text);
-            Rect bounds = ScreenBounds(header.rectTransform);
             Check(Contains(ScreenBounds(view.detailsScroll.viewport), bounds, 2f),
                 "The section header must remain in the visible reward viewport: " + header.text);
             int minX = Mathf.Clamp(Mathf.FloorToInt(bounds.xMin), 0, shot.width - 1);
@@ -507,7 +563,7 @@ public static class SettlementVisualValidation
             Image icon = row.Find("Icon").GetComponent<Image>();
             Check(icon.sprite == petIcon && !icon.transform.Find("Placeholder").gameObject.activeSelf,
                 "The pet entry must use its actual catalog portrait instead of a placeholder.");
-            InspectNewMarker(icon);
+            InspectNewMarker(icon, !shot.detailsBottom);
             report.newMarkerCount++;
             report.petIconPath = AssetDatabase.GetAssetPath(icon.sprite);
         }
@@ -515,8 +571,12 @@ public static class SettlementVisualValidation
         {
             Transform row = FirstActiveChild(view.recipeContent);
             Image icon = row.Find("Icon").GetComponent<Image>();
-            Check(icon.sprite == recipeIcon, "The new recipe must retain the actual recipe icon.");
-            InspectNewMarker(icon);
+            Sprite expectedIcon = recipeIcon;
+            if (shot.fixture == Fixture.ManyRewards)
+                foreach (DishRecipe candidate in RestaurantPanel.instance.dishRecipes)
+                    if (candidate != null && candidate.dishID == result.NewRecipeIds[0]) expectedIcon = candidate.dishIcon;
+            Check(icon.sprite == expectedIcon, "The new recipe must retain the actual recipe icon.");
+            InspectNewMarker(icon, !shot.detailsBottom);
             report.newMarkerCount++;
         }
         if (!view.gatheredSection.activeSelf) return;
@@ -554,7 +614,7 @@ public static class SettlementVisualValidation
         report.ownedText = total.text;
     }
 
-    private static void InspectNewMarker(Image icon)
+    private static void InspectNewMarker(Image icon, bool requireVisible)
     {
         RectTransform marker = icon.transform.Find("New").GetComponent<RectTransform>();
         Check(marker.gameObject.activeInHierarchy && marker.parent == icon.transform,
@@ -565,7 +625,7 @@ public static class SettlementVisualValidation
         Rect markerBounds = ScreenBounds(marker);
         Check(markerBounds.center.x < iconBounds.center.x && markerBounds.center.y > iconBounds.center.y,
             "The rendered NEW badge must remain at the upper-left of the icon.");
-        Check(Contains(ScreenBounds(view.detailsScroll.viewport), markerBounds, 2f),
+        Check(!requireVisible || Contains(ScreenBounds(view.detailsScroll.viewport), markerBounds, 2f),
             "The NEW badge must remain visible inside the rewards viewport.");
         Check(marker.Find("Label").GetComponent<Text>().text == "NEW", "The icon badge must show NEW.");
     }
@@ -645,7 +705,7 @@ public static class SettlementVisualValidation
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private enum Fixture { Success, Death, LargeNumbers, SingleEmpty }
+    private enum Fixture { Success, Death, LargeNumbers, SingleEmpty, Feedback, ManyRewards }
 
     private sealed class Shot
     {
@@ -654,14 +714,16 @@ public static class SettlementVisualValidation
         public readonly int height;
         public readonly Fixture fixture;
         public readonly bool bagBottom;
-        public bool death { get { return fixture == Fixture.Death || fixture == Fixture.LargeNumbers; } }
-        public Shot(string name, int width, int height, Fixture fixture, bool bagBottom = false)
+        public readonly bool detailsBottom;
+        public bool death { get { return fixture == Fixture.Death || fixture == Fixture.LargeNumbers || fixture == Fixture.Feedback; } }
+        public Shot(string name, int width, int height, Fixture fixture, bool bagBottom = false, bool detailsBottom = false)
         {
             this.name = name;
             this.width = width;
             this.height = height;
             this.fixture = fixture;
             this.bagBottom = bagBottom;
+            this.detailsBottom = detailsBottom;
         }
     }
 
@@ -679,6 +741,8 @@ public static class SettlementVisualValidation
         public int slotCount;
         public int ingredientIconCount;
         public bool bagScrolledToBottom;
+        public bool detailsScrolledToBottom;
+        public string carriedIngredientText;
         public List<string> formalArtwork = new List<string>();
         public int newMarkerCount;
         public string petIconPath;
