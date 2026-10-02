@@ -24,7 +24,7 @@ namespace Game.Modules.Editor
 
     /// <summary>
     /// Scene 视图只保留三个入口：自由观察、二维布局、游戏镜头。
-    /// 游戏镜头优先直接读取运行中的 Camera；编辑态直接读取 PlanarPerspectiveView.Pose，
+    /// 游戏镜头优先直接读取运行中的 Camera；编辑态读取模块 Pose 或场景的游戏 Camera，
     /// 避免编辑器和运行时各自推算一套结果。
     /// </summary>
     [InitializeOnLoad]
@@ -41,6 +41,7 @@ namespace Game.Modules.Editor
         const string StandardPath = "Assets/Modules/Shared/WorldViewStandard.asset";
 
         static readonly Dictionary<Transform, Quaternion> PreviewRotations = new Dictionary<Transform, Quaternion>();
+        static Camera previewCamera;
         static ViewMode mode;
         static float elevation;
         static float fieldOfView;
@@ -174,7 +175,8 @@ namespace Game.Modules.Editor
         {
             string source = Application.isPlaying && RuntimeCamera() != null && !runtimeOverride
                 ? "当前运行镜头"
-                : ResolveView() != null ? "选中模块的正式镜头" : "未找到镜头来源";
+                : ResolveView() != null ? "选中模块的正式镜头"
+                : AuthoredCamera() != null ? "当前场景的游戏相机" : "未找到镜头来源";
             EditorGUILayout.LabelField("镜头来源", source);
             Camera sceneCamera = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.camera : null;
             if (sceneCamera != null)
@@ -231,7 +233,7 @@ namespace Game.Modules.Editor
             else
             {
                 EditorGUILayout.HelpBox("拖动“俯角 / FOV / 距离”会自动实时同步到 Game；也可以先点下面按钮。", MessageType.Info);
-                using (new EditorGUI.DisabledScope(CameraService.Active == null || ResolveFrame() == null))
+                using (new EditorGUI.DisabledScope(CameraService.Active == null || !TryBuildCustomPose(out _, out _)))
                     if (GUILayout.Button("临时接管 Game 镜头")) StartRuntimeOverride();
             }
         }
@@ -239,7 +241,10 @@ namespace Game.Modules.Editor
         static void DrawHelperControls()
         {
             EditorGUI.BeginChangeCheck();
-            previewFacing = EditorGUILayout.ToggleLeft("Scene 中模拟跟随镜头图片", previewFacing);
+            if (mode == ViewMode.GameCamera)
+                EditorGUILayout.LabelField("跟随镜头图片预览", "自动开启");
+            else
+                previewFacing = EditorGUILayout.ToggleLeft("Scene 中模拟跟随镜头图片", previewFacing);
             showGameFrame = EditorGUILayout.ToggleLeft("显示 Game 画幅框", showGameFrame);
             showMarkers = EditorGUILayout.ToggleLeft("显示物件分类标记", showMarkers);
             using (new EditorGUI.DisabledScope(!showMarkers))
@@ -353,9 +358,11 @@ namespace Game.Modules.Editor
             return 16f / 9f;
         }
 
-        static bool TryGetOfficialPose(out CameraPose pose, out Vector3 target)
+        internal static bool TryGetOfficialPose(out CameraPose pose, out Vector3 target)
         {
-            Camera camera = Application.isPlaying ? RuntimeCamera() : null;
+            // Dungeon scenes use CameraFollow rather than a restaurant ModuleWorld.
+            Camera camera = Application.isPlaying ? RuntimeCamera()
+                : ResolveView() == null ? AuthoredCamera() : null;
             if (camera != null && !runtimeOverride)
             {
                 float focusDistance = Mathf.Max(1f, distance);
@@ -367,6 +374,15 @@ namespace Game.Modules.Editor
                         focusDistance = Mathf.Max(.01f, hit);
                 }
                 target = camera.transform.position + camera.transform.forward * focusDistance;
+                var follow = camera.GetComponent<CameraFollow>();
+                if (follow != null && follow.DefaultTarget != null)
+                {
+                    // SceneView's pivot must lie on the optical axis. Using the player
+                    // directly would erase the Game camera's pointer/look-ahead offset.
+                    focusDistance = Mathf.Max(.01f, Vector3.Dot(follow.DefaultTarget.position - camera.transform.position,
+                        camera.transform.forward));
+                    target = camera.transform.position + camera.transform.forward * focusDistance;
+                }
                 pose = new CameraPose(camera.transform.position, camera.transform.rotation,
                     camera.orthographicSize, !camera.orthographic, camera.fieldOfView);
                 return true;
@@ -389,9 +405,19 @@ namespace Game.Modules.Editor
             Transform frame = ResolveFrame();
             if (frame == null)
             {
-                pose = default;
-                plane = default;
-                return false;
+                Camera camera = Application.isPlaying ? RuntimeCamera() : AuthoredCamera();
+                if (camera == null)
+                {
+                    pose = default;
+                    plane = default;
+                    return false;
+                }
+                plane = CameraPlane.FromRotation(camera.transform.rotation, pivot);
+                Vector3 dungeonTarget = plane.FromPlane(compositionOffset);
+                Quaternion dungeonRotation = Quaternion.Euler(elevation, camera.transform.eulerAngles.y, 0f);
+                pose = new CameraPose(dungeonTarget - dungeonRotation * Vector3.forward * distance,
+                    dungeonRotation, camera.orthographicSize, !camera.orthographic, fieldOfView);
+                return true;
             }
             Vector3 target = CustomTarget();
             Quaternion rotation = frame.rotation * Quaternion.Euler(-(90f - elevation), 0f, 0f);
@@ -404,7 +430,9 @@ namespace Game.Modules.Editor
         static Vector3 CustomTarget()
         {
             Transform frame = ResolveFrame();
-            return frame == null ? pivot : pivot + frame.right * compositionOffset.x + frame.up * compositionOffset.y;
+            if (frame != null) return pivot + frame.right * compositionOffset.x + frame.up * compositionOffset.y;
+            Camera camera = Application.isPlaying ? RuntimeCamera() : AuthoredCamera();
+            return camera != null ? CameraPlane.FromRotation(camera.transform.rotation, pivot).FromPlane(compositionOffset) : pivot;
         }
 
         static void LoadOfficialCamera()
@@ -433,26 +461,38 @@ namespace Game.Modules.Editor
             }
             else
             {
-                var standard = AssetDatabase.LoadAssetAtPath<WorldViewStandard>(StandardPath);
-                if (standard != null)
+                Camera camera = AuthoredCamera();
+                if (camera != null)
                 {
-                    elevation = standard.elevation;
-                    fieldOfView = standard.verticalFieldOfView;
+                    fieldOfView = camera.fieldOfView;
+                    elevation = Mathf.Asin(Mathf.Clamp01(Mathf.Abs(camera.transform.forward.y))) * Mathf.Rad2Deg;
+                    if (TryGetOfficialPose(out _, out Vector3 cameraTarget))
+                        distance = Mathf.Max(.01f, Vector3.Dot(cameraTarget - camera.transform.position, camera.transform.forward));
+                }
+                else
+                {
+                    var standard = AssetDatabase.LoadAssetAtPath<WorldViewStandard>(StandardPath);
+                    if (standard != null)
+                    {
+                        elevation = standard.elevation;
+                        fieldOfView = standard.verticalFieldOfView;
+                    }
                 }
             }
 
             if (TryGetOfficialPose(out _, out Vector3 target)) pivot = target;
             else if (ResolveFrame() != null) pivot = ResolveFrame().position;
-            status = view != null || Application.isPlaying ? "已恢复正式游戏镜头。" : "未找到模块镜头，请先选择模块。";
+            status = view != null || AuthoredCamera() != null || Application.isPlaying
+                ? "已恢复正式游戏镜头。" : "未找到游戏相机或模块镜头。";
             SavePreferences();
             ApplyToSceneView(SceneView.lastActiveSceneView);
         }
 
         static void StartRuntimeOverride()
         {
-            if (!Application.isPlaying || CameraService.Active == null || ResolveFrame() == null)
+            if (!Application.isPlaying || CameraService.Active == null || !TryBuildCustomPose(out _, out _))
             {
-                status = "运行中的 CameraDirector 或模块 Frame 不可用。";
+                status = "运行中的镜头控制器或游戏相机不可用。";
                 return;
             }
             mode = ViewMode.GameCamera;
@@ -631,7 +671,7 @@ namespace Game.Modules.Editor
                 string label = showNames ? $"{item.name} · {CategoryLabel(item)}" : CategoryLabel(item);
                 if (item == selected && sceneView.camera != null && item.art != null && item.art.sprite != null)
                 {
-                    ProjectionDifference difference = MeasureProjection(item, sceneView.camera, previewFacing);
+                    ProjectionDifference difference = MeasureProjection(item, sceneView.camera, previewFacing || mode == ViewMode.GameCamera);
                     label += $"\n比例 {difference.AspectPercent:0.#}% / 边缘 {difference.TrapezoidPercent:0.#}%";
                 }
                 Handles.Label(point + (item.xzGround ? Vector3.up : Vector3.back) * size * .08f,
@@ -652,7 +692,7 @@ namespace Game.Modules.Editor
             var sceneView = SceneView.lastActiveSceneView;
             if (item == null || sceneView == null || sceneView.camera == null || item.art == null || item.art.sprite == null)
                 return;
-            ProjectionDifference difference = MeasureProjection(item, sceneView.camera, previewFacing);
+            ProjectionDifference difference = MeasureProjection(item, sceneView.camera, previewFacing || mode == ViewMode.GameCamera);
             MessageType type = IsInvalid(item) ? MessageType.Error :
                 difference.MaxPercent < 2f ? MessageType.Info : MessageType.Warning;
             EditorGUILayout.HelpBox($"{item.name} · {CategoryLabel(item)}\n比例变化 {difference.AspectPercent:0.0}% · 边缘差 {difference.TrapezoidPercent:0.0}%", type);
@@ -772,6 +812,12 @@ namespace Game.Modules.Editor
             var views = Resources.FindObjectsOfTypeAll<PlanarPerspectiveView>()
                 .Where(view => view != null && !EditorUtility.IsPersistent(view) &&
                                view.gameObject.scene.IsValid() && view.gameObject.scene.isLoaded).ToArray();
+            var selectedScene = Selection.activeGameObject != null && Selection.activeGameObject.scene.IsValid()
+                ? Selection.activeGameObject.scene : UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            var sceneViews = views.Where(view => view.gameObject.scene == selectedScene).ToArray();
+            if (sceneViews.Length == 1) return sceneViews[0];
+            // Do not let a loaded town's restaurant supply the dungeon's edit camera.
+            if (AuthoredCamera() != null) return null;
             return views.Length == 1 ? views[0] : null;
         }
 
@@ -783,8 +829,20 @@ namespace Game.Modules.Editor
 
         static Camera RuntimeCamera()
         {
-            return CameraService.Active != null && CameraService.Active.Camera != null
+            return CameraService.Active != null && CameraService.Active.Camera != null && CameraService.Active.Camera.isActiveAndEnabled
                 ? CameraService.Active.Camera : Camera.main;
+        }
+
+        static Camera AuthoredCamera()
+        {
+            var selected = Selection.activeGameObject;
+            var scene = selected != null && selected.scene.IsValid() && selected.scene.isLoaded
+                ? selected.scene : UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            if (scene.IsValid() && scene.isLoaded)
+                foreach (var root in scene.GetRootGameObjects())
+                    foreach (var camera in root.GetComponentsInChildren<Camera>(true))
+                        if (camera.isActiveAndEnabled && camera.CompareTag("MainCamera")) return camera;
+            return Camera.main;
         }
 
         static void BeginBuiltInCamera(Camera camera)
@@ -807,13 +865,22 @@ namespace Game.Modules.Editor
             if (GraphicsSettings.currentRenderPipeline != null) EndSceneCamera(camera);
         }
 
-        static void BeginSceneCamera(Camera camera)
+        internal static void BeginSceneCamera(Camera camera)
         {
-            if (!previewFacing || camera == null || camera.cameraType != CameraType.SceneView || PreviewRotations.Count > 0)
+            if (camera == null || previewCamera != null)
                 return;
+            bool scenePreview = camera.cameraType == CameraType.SceneView && (previewFacing || mode == ViewMode.GameCamera);
+            bool gamePreview = !Application.isPlaying && camera.cameraType == CameraType.Game;
+            if (!scenePreview && !gamePreview) return;
+            previewCamera = camera;
             try
             {
-                foreach (var facing in VisibleFacingVisuals())
+                // Render Game and its matching Scene view with the same billboard rule.
+                // Keep authored rotations untouched outside the render callbacks.
+                var faces = gamePreview || mode == ViewMode.GameCamera
+                    ? Object.FindObjectsOfType<CameraFacingVisual>().Where(face => face.isActiveAndEnabled)
+                    : VisibleFacingVisuals();
+                foreach (var facing in faces)
                 {
                     PreviewRotations[facing.transform] = facing.transform.rotation;
                     facing.transform.rotation = facing.RotationFor(camera);
@@ -826,9 +893,11 @@ namespace Game.Modules.Editor
             }
         }
 
-        static void EndSceneCamera(Camera camera)
+        internal static void EndSceneCamera(Camera camera)
         {
-            if (camera != null && camera.cameraType == CameraType.SceneView) RestorePreviewRotations();
+            // Overlay cameras can render inside a base-camera callback. Only the camera
+            // that started this preview may restore it.
+            if (camera != null && camera == previewCamera) RestorePreviewRotations();
         }
 
         static void RestorePreviewRotations()
@@ -836,6 +905,7 @@ namespace Game.Modules.Editor
             foreach (var pair in PreviewRotations)
                 if (pair.Key != null) pair.Key.rotation = pair.Value;
             PreviewRotations.Clear();
+            previewCamera = null;
         }
 
         static void Cleanup()

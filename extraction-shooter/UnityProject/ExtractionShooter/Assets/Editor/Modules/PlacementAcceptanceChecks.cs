@@ -61,6 +61,135 @@ namespace Game.Modules.Editor
 
         public static void ContactAndLogicIsolationXY() => ContactAndLogicIsolation(false);
         public static void ContactAndLogicIsolationXZ() => ContactAndLogicIsolation(true);
+        public static void TreeImageCopiesAreIndependent()
+        {
+            var source = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Environment/Vegetation/Prototype/Prefabs/Vegetation_Single_Tree.prefab");
+            var grass = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Environment/Vegetation/Prototype/Prefabs/Vegetation_Single_Grass.prefab");
+            Require(source != null && grass != null, "Missing tree/grass image templates.");
+            var first = (GameObject)PrefabUtility.InstantiatePrefab(source);
+            var second = (GameObject)PrefabUtility.InstantiatePrefab(source);
+            try
+            {
+                var item = first.GetComponent<PlacementItem>();
+                var sourceSprite = source.GetComponent<PlacementItem>().art.sprite;
+                Require(item.art != null && sourceSprite != null, "Tree must render a directly editable Sprite image.");
+                Require(first.GetComponentsInChildren<MeshRenderer>(true).Length == 0,
+                    "Tree image must not be a mesh with a texture-only material.");
+                var rootPosition = first.transform.position;
+                var contact = item.contact.position;
+                var physics = item.physicsRoot.position;
+                var anchors = item.anchorsRoot.position;
+                var material = item.art.sharedMaterial;
+                item.art.sprite = grass.GetComponent<PlacementItem>().art.sprite;
+                item.width = item.art.sprite.bounds.size.x;
+                item.groundDepth = item.art.sprite.bounds.size.y;
+                PlacementTools.ApplyWithUndo(item);
+                Require(item.art.sprite != sourceSprite && item.art.sharedMaterial == material,
+                    "Changing the image should not require changing material.");
+                Require(source.GetComponent<PlacementItem>().art.sprite == sourceSprite &&
+                    second.GetComponent<PlacementItem>().art.sprite == sourceSprite,
+                    "Changing a copied tree must not modify the source or another copy.");
+                Require(rootPosition == first.transform.position && contact == item.contact.position &&
+                    physics == item.physicsRoot.position && anchors == item.anchorsRoot.position,
+                    "Changing the tree image moved its layout, contact, physics or anchors.");
+                Require(item.art.transform.localScale == Vector3.one && item.UsesCameraFacingVisual,
+                    "Tree copy must retain source dimensions and camera facing.");
+                PlacementTools.ValidateTree(first);
+            }
+            finally
+            {
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
+            }
+        }
+
+        public static void EditorDungeonCameraWithoutModule()
+        {
+            var selected = Selection.activeObject;
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
+            try
+            {
+                var target = new GameObject("Dungeon preview target");
+                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(target, scene);
+                target.transform.position = new Vector3(1, 0, 2);
+                var go = new GameObject("Dungeon preview camera");
+                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go, scene);
+                go.tag = "MainCamera";
+                var camera = go.AddComponent<Camera>();
+                camera.orthographic = false; camera.fieldOfView = 40;
+                go.transform.rotation = Quaternion.Euler(45, 0, 0);
+                go.transform.position = target.transform.position - go.transform.forward * 27.5f;
+                var follow = go.AddComponent<CameraFollow>();
+                var settings = new SerializedObject(follow);
+                settings.FindProperty("target").objectReferenceValue = target.transform;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+                Selection.activeGameObject = target;
+                Require(SceneViewCameraWorkbench.TryGetOfficialPose(out var pose, out var focus),
+                    "A dungeon CameraFollow without ModuleWorld must resolve in edit mode.");
+                Require(Vector3.Distance(pose.Position, camera.transform.position) < .001f &&
+                    Quaternion.Angle(pose.Rotation, camera.transform.rotation) < .01f &&
+                    pose.Perspective && pose.FieldOfView == camera.fieldOfView,
+                    "Scene view must use the authored Game camera's actual pose and lens.");
+                Require(Vector3.Distance(focus, target.transform.position) < .001f,
+                    "Dungeon preview must focus on the CameraFollow target.");
+                var opticalFocus = focus;
+                target.transform.position += camera.transform.right * 4f + camera.transform.up * .6f;
+                Require(SceneViewCameraWorkbench.TryGetOfficialPose(out pose, out focus) &&
+                    Vector3.Distance(focus, opticalFocus) < .001f &&
+                    Vector3.Distance(pose.Position, camera.transform.position) < .001f,
+                    "Following an off-axis player must preserve the Game camera's composition.");
+            }
+            finally
+            {
+                Selection.activeObject = selected;
+                UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);
+            }
+        }
+
+        public static void EditorBillboardsMatchGameAndRestore()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Environment/Vegetation/Prototype/Prefabs/Vegetation_Single_Tree.prefab");
+            var root = Object.Instantiate(prefab);
+            root.hideFlags = HideFlags.HideInHierarchy;
+            var go = new GameObject("Editor billboard verification") { hideFlags = HideFlags.HideInHierarchy };
+            var overlay = new GameObject("Nested overlay verification") { hideFlags = HideFlags.HideInHierarchy };
+            var camera = go.AddComponent<Camera>(); camera.enabled = false;
+            var nested = overlay.AddComponent<Camera>(); nested.enabled = false;
+            var facing = root.GetComponentInChildren<CameraFacingVisual>();
+            var position = root.transform.position;
+            var original = facing.transform.localRotation;
+            var modeField = typeof(SceneViewCameraWorkbench).GetField("mode",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var previousMode = modeField.GetValue(null);
+            try
+            {
+                modeField.SetValue(null, Enum.Parse(modeField.FieldType, "GameCamera"));
+                foreach (var type in new[] { CameraType.Game, CameraType.SceneView })
+                {
+                    camera.cameraType = type;
+                    camera.transform.rotation = Quaternion.Euler(45, 25, 0);
+                    SceneViewCameraWorkbench.BeginSceneCamera(camera);
+                    Require(Quaternion.Angle(facing.transform.rotation, facing.RotationFor(camera)) < .01f,
+                        type + " edit rendering did not align the tree.");
+                    SceneViewCameraWorkbench.EndSceneCamera(nested);
+                    Require(Quaternion.Angle(facing.transform.rotation, facing.RotationFor(camera)) < .01f,
+                        "A nested overlay restored the base-camera preview too early.");
+                    SceneViewCameraWorkbench.EndSceneCamera(camera);
+                    Require(Quaternion.Angle(facing.transform.localRotation, original) < .01f &&
+                        root.transform.position == position && root.transform.rotation == Quaternion.identity,
+                        "Editor rendering must restore authored transforms and keep the layout root unchanged.");
+                }
+            }
+            finally
+            {
+                SceneViewCameraWorkbench.EndSceneCamera(camera);
+                modeField.SetValue(null, previousMode);
+                Object.DestroyImmediate(root); Object.DestroyImmediate(go); Object.DestroyImmediate(overlay);
+            }
+        }
         public static void StandaloneDepthBeyondRestaurantRange()
         {
             var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(PlacementTools.SampleFolder+"/Stove.prefab");

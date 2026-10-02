@@ -450,6 +450,75 @@ namespace GourmetAbyss.CameraSystem.Acceptance
             AssertNoCameraErrors();
         }
 
+#if UNITY_EDITOR
+        [UnityTest]
+        public IEnumerator TreeTemplates_FaceCameraOnFirstEntryRestartAndReentry()
+        {
+            yield return LoadProductionScene(TownScene);
+            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Environment/Vegetation/Prototype/Prefabs/Vegetation_Single_Tree.prefab");
+            Assert.IsNotNull(prefab);
+            var trees = new List<CameraFacingVisual>();
+            var observations = new List<string>();
+            var manager = RequireBehaviour("LevelManager");
+            UnityEngine.Events.UnityAction<Scene, LoadSceneMode> placeTrees = (scene, mode) =>
+            {
+                if (scene.name != DungeonScene || mode != LoadSceneMode.Additive) return;
+                trees.Clear();
+                // Spawn before the town is hidden, matching authored tree OnEnable timing.
+                for (int i = 0; i < 3; i++)
+                {
+                    var tree = UnityEngine.Object.Instantiate(prefab);
+                    SceneManager.MoveGameObjectToScene(tree, scene);
+                    trees.Add(tree.GetComponentInChildren<CameraFacingVisual>());
+                }
+            };
+            SceneManager.sceneLoaded += placeTrees;
+            try
+            {
+                Assert.IsTrue((bool)InvokePublic(manager, "TryEnterLevel", DungeonScene));
+                yield return WaitForLevelTransition(manager, DungeonScene, true);
+                VerifyProductionTreeFacing(trees, observations, "first-entry");
+                var runs = RequireBehaviour("RunSessionManager");
+                InvokePublic(RequireBehaviour("levelCaveCar"), "ToHome");
+                yield return null;
+                Assert.IsTrue((bool)InvokePublic(runs, "RetryExploration"));
+                yield return WaitForLevelTransition(manager, DungeonScene, true);
+                VerifyProductionTreeFacing(trees, observations, "restart");
+
+                InvokePublic(RequireBehaviour("levelCaveCar"), "ToHome");
+                yield return null;
+                Assert.IsTrue((bool)InvokePublic(runs, "ReturnToTown"));
+                yield return WaitForLevelTransition(manager, DungeonScene, false);
+                Assert.IsTrue((bool)InvokePublic(manager, "TryEnterLevel", DungeonScene));
+                yield return WaitForLevelTransition(manager, DungeonScene, true);
+                VerifyProductionTreeFacing(trees, observations, "reentry");
+                AssertNoCameraErrors();
+                System.IO.Directory.CreateDirectory("Library/TreeFacingVerification");
+                System.IO.File.WriteAllLines("Library/TreeFacingVerification/production-angles.txt", observations);
+            }
+            finally
+            {
+                SceneManager.sceneLoaded -= placeTrees;
+            }
+        }
+
+        private static void VerifyProductionTreeFacing(List<CameraFacingVisual> trees, List<string> observations, string stage)
+        {
+            var director = RequireActiveDirector(DungeonScene);
+            Assert.AreEqual(DungeonScene, director.gameObject.scene.name);
+            Assert.AreEqual(3, trees.Count);
+            foreach (var tree in trees)
+            {
+                Assert.IsNotNull(tree);
+                float angle = Quaternion.Angle(tree.transform.rotation, tree.RotationFor(director.Camera));
+                observations.Add(stage + ": " + angle.ToString("F4") + " degrees");
+                Assert.That(angle, Is.LessThan(.1f), stage + " tree is not facing the dungeon camera.");
+                Assert.That(Quaternion.Angle(tree.transform.parent.rotation, Quaternion.identity), Is.LessThan(.01f));
+            }
+        }
+#endif
+
         [UnityTest]
         public IEnumerator AllDungeonLayers_UsePerspectiveAimAndSpawnedVisuals()
         {

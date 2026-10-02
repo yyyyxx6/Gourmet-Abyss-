@@ -155,7 +155,7 @@ namespace Game.Modules.Editor
         public override void OnInspectorGUI()
         {
             var item = (PlacementItem)target;
-            EditorGUILayout.HelpBox("源图尺寸模式下 Art 始终为 1，换图后使用 Sprite 导入尺寸。美术只换图和摆根节点，不手调 Transform Scale。Physics/Anchors 不随图片改变。", MessageType.Info);
+            EditorGUILayout.HelpBox("这是可直接换 PNG 的 2D 场景图片。将导入为 Sprite (2D and UI) 的图片拖到下方“2D 图片”即可，换图会自动应用尺寸和接地点。无需编辑材质。只摆放根节点，Physics/Anchors 不随图片改变。", MessageType.Info);
             string sourcePath=PlacementPrefabLinks.SourcePath(item);
             if(!string.IsNullOrEmpty(sourcePath))
             {
@@ -167,15 +167,16 @@ namespace Game.Modules.Editor
             using (new EditorGUI.DisabledScope(Application.isPlaying))
             {
                 EditorGUI.BeginChangeCheck();
-                var sprite = (Sprite)EditorGUILayout.ObjectField("图片", item.art != null ? item.art.sprite : null, typeof(Sprite), false);
+                var sprite = (Sprite)EditorGUILayout.ObjectField(new GUIContent("2D 图片", "拖入 PNG 的 Sprite 资源。复制预制体后在这里替换图片，无需修改材质。"), item.art != null ? item.art.sprite : null, typeof(Sprite), false);
                 float width = EditorGUILayout.FloatField("世界宽度", item.width);
                 float depth = item.surface == PlacementItem.Surface.Ground ? EditorGUILayout.FloatField("地面深度", item.groundDepth) : item.groundDepth;
                 var point = EditorGUILayout.Vector2Field("图片接地点 (0..1)", item.spriteContact);
                 var footprint = EditorGUILayout.Vector2Field("占地宽/深（不改碰撞）", item.footprint);
                 if (EditorGUI.EndChangeCheck() && item.art != null)
                 {
+                    bool spriteChanged = sprite != item.art.sprite;
                     Undo.RecordObjects(new UnityEngine.Object[] { item, item.art }, "调整图片配置");
-                    if (sprite != item.art.sprite && sprite != null)
+                    if (spriteChanged && sprite != null)
                     {
                         width = sprite.bounds.size.x;
                         depth = sprite.bounds.size.y;
@@ -185,6 +186,7 @@ namespace Game.Modules.Editor
                     EditorUtility.SetDirty(item); EditorUtility.SetDirty(item.art);
                     PrefabUtility.RecordPrefabInstancePropertyModifications(item);
                     PrefabUtility.RecordPrefabInstancePropertyModifications(item.art);
+                    if (spriteChanged && sprite != null) PlacementTools.ApplyWithUndo(item);
                 }
                 if (GUILayout.Button("应用图片配置（不动逻辑/碰撞）")) PlacementTools.ApplyWithUndo(item);
             if (GUILayout.Button("恢复源图原始尺寸")) PlacementTools.UseStandardSize(item);

@@ -16,30 +16,62 @@ namespace GourmetAbyss.CameraSystem
             EveryLateUpdate
         }
 
+        [Tooltip("可手动指定镜头；留空时始终使用当前有效的游戏镜头")]
         [SerializeField] private Camera targetCamera;
         [SerializeField] private UpdateMode updateMode = UpdateMode.OnceOnEnable;
         [Tooltip("部分 Sprite/Quad 的正面法线相反时启用")]
         [SerializeField] private bool reverseForward;
         [SerializeField] private Vector3 additionalEulerAngles;
+        private Camera _alignedCamera;
+        private bool _alignOnNextLateUpdate;
+
         private void OnEnable()
         {
+            _alignedCamera = null;
+            _alignOnNextLateUpdate = true;
             AlignToCamera();
         }
 
         private void LateUpdate()
         {
-            if (updateMode == UpdateMode.EveryLateUpdate)
-                AlignToCamera();
+            Camera camera = ResolveCamera();
+            if (camera == null)
+            {
+                // Retry even in OnceOnEnable mode when a camera becomes available.
+                _alignedCamera = null;
+                return;
+            }
+            if (updateMode == UpdateMode.EveryLateUpdate || _alignOnNextLateUpdate || _alignedCamera != camera)
+            {
+                ApplyAlignment(camera);
+                // Director has now applied the frame's final camera pose.
+                _alignOnNextLateUpdate = false;
+            }
         }
 
         public void AlignToCamera()
         {
-            if (targetCamera == null)
-                targetCamera = CameraService.Active != null ? CameraService.Active.Camera : Camera.main;
-            if (targetCamera == null)
-                return;
+            Camera camera = ResolveCamera();
+            if (camera != null)
+                ApplyAlignment(camera);
+        }
 
-            transform.rotation = RotationFor(targetCamera);
+        private Camera ResolveCamera()
+        {
+            // Never write the automatically resolved camera into the authored override.
+            // Additive loading can enable visuals before the town camera is disabled.
+            if (targetCamera != null && targetCamera.isActiveAndEnabled)
+                return targetCamera;
+            Camera active = CameraService.Active != null ? CameraService.Active.Camera : null;
+            if (active != null && active.isActiveAndEnabled)
+                return active;
+            return Camera.main;
+        }
+
+        private void ApplyAlignment(Camera camera)
+        {
+            transform.rotation = RotationFor(camera);
+            _alignedCamera = camera;
         }
 
         /// <summary>

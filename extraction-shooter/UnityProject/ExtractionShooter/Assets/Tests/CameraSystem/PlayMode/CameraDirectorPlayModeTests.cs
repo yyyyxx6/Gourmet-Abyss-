@@ -318,5 +318,119 @@ namespace GourmetAbyss.CameraSystem.Tests
 
             Object.Destroy(visual);
         }
+
+        [UnityTest]
+        public IEnumerator CameraFacingVisual_RebindsAfterAdditiveCameraHandoff()
+        {
+            yield return VerifyVisualCameraHandoff(CameraFacingVisual.UpdateMode.EveryLateUpdate);
+        }
+
+        [UnityTest]
+        public IEnumerator CameraFacingVisual_OnceOnEnableRetriesAfterCameraHandoff()
+        {
+            yield return VerifyVisualCameraHandoff(CameraFacingVisual.UpdateMode.OnceOnEnable);
+        }
+
+        private IEnumerator VerifyVisualCameraHandoff(CameraFacingVisual.UpdateMode mode)
+        {
+            // Match first entry: the town camera survives, but is disabled only after
+            // the additive dungeon's authored visuals have already been enabled.
+            var scene = UnityEngine.SceneManagement.SceneManager.CreateScene("BillboardDungeonTest");
+            var dungeon = new GameObject("DungeonCamera");
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(dungeon, scene);
+            dungeon.tag = "MainCamera";
+            var camera = dungeon.AddComponent<Camera>();
+            dungeon.transform.rotation = Quaternion.Euler(45f, 25f, 0f);
+            dungeon.AddComponent<CameraDirector>();
+            var root = new GameObject("TreeRoot");
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(root, scene);
+            var visual = new GameObject("VisualRoot");
+            visual.transform.SetParent(root.transform, false);
+            var facing = visual.AddComponent<CameraFacingVisual>();
+            typeof(CameraFacingVisual).GetField("updateMode",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .SetValue(facing, mode);
+            AsyncOperation unload = null;
+            try
+            {
+                Assert.AreSame(_director, CameraService.Active, "Town must still own the camera during additive loading.");
+                yield return null;
+                _cameraObject.SetActive(false);
+                Assert.AreSame(camera, CameraService.Active.Camera);
+                yield return null;
+                Assert.That(Quaternion.Angle(visual.transform.rotation, camera.transform.rotation), Is.LessThan(.01f),
+                    "Tree retained the disabled town camera after first dungeon entry.");
+                Assert.That(Quaternion.Angle(root.transform.rotation, Quaternion.identity), Is.LessThan(.01f));
+
+                // Restart: destroy the first dungeon camera, then create its replacement.
+                Object.Destroy(dungeon);
+                yield return null;
+                dungeon = new GameObject("RestartedDungeonCamera");
+                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(dungeon, scene);
+                dungeon.tag = "MainCamera";
+                camera = dungeon.AddComponent<Camera>();
+                dungeon.transform.rotation = Quaternion.Euler(35f, -20f, 0f);
+                dungeon.AddComponent<CameraDirector>();
+                yield return null;
+                Assert.That(Quaternion.Angle(visual.transform.rotation, camera.transform.rotation), Is.LessThan(.01f));
+            }
+            finally
+            {
+                _cameraObject.SetActive(true);
+                unload = UnityEngine.SceneManagement.SceneManager.UnloadSceneAsync(scene);
+            }
+            yield return unload;
+        }
+
+        [UnityTest]
+        public IEnumerator CameraFacingVisual_RetriesWhenCameraAppearsAfterEnable()
+        {
+            _cameraObject.SetActive(false);
+            var visual = new GameObject("DelayedCameraVisual");
+            visual.AddComponent<CameraFacingVisual>();
+            try
+            {
+                yield return null;
+                _cameraObject.transform.rotation = Quaternion.Euler(45f, 10f, 0f);
+                _cameraObject.SetActive(true);
+                yield return null;
+                Assert.That(Quaternion.Angle(visual.transform.rotation, _cameraObject.transform.rotation), Is.LessThan(.01f));
+            }
+            finally
+            {
+                _cameraObject.SetActive(true);
+                Object.Destroy(visual);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator CameraFacingVisual_PreservesExplicitCameraAndOnceMode()
+        {
+            var explicitCamera = new GameObject("ExplicitVisualCamera");
+            var camera = explicitCamera.AddComponent<Camera>();
+            explicitCamera.transform.rotation = Quaternion.Euler(30f, 15f, 0f);
+            var visual = new GameObject("ExplicitCameraVisual");
+            visual.SetActive(false);
+            var facing = visual.AddComponent<CameraFacingVisual>();
+            typeof(CameraFacingVisual).GetField("targetCamera",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .SetValue(facing, camera);
+            try
+            {
+                visual.SetActive(true);
+                yield return null;
+                Assert.That(Quaternion.Angle(visual.transform.rotation, camera.transform.rotation), Is.LessThan(.01f));
+                var aligned = visual.transform.rotation;
+                explicitCamera.transform.rotation = Quaternion.Euler(55f, 45f, 0f);
+                yield return null;
+                Assert.That(Quaternion.Angle(visual.transform.rotation, aligned), Is.LessThan(.01f),
+                    "OnceOnEnable must not continuously follow an unchanged explicit camera.");
+            }
+            finally
+            {
+                Object.Destroy(visual);
+                Object.Destroy(explicitCamera);
+            }
+        }
     }
 }

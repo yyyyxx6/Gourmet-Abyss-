@@ -12,6 +12,21 @@
 
 项目统一尺寸倍率由 `WorldViewStandard` 提供，创建工具自动计算。美术不需要计算 PPU 或世界宽度。需要左右变化时使用 SpriteRenderer 的 Flip X；不要随机旋转 Y 轴。
 
+## 策划复制和换图
+
+1. 在 Project 窗口选中 `Vegetation_Single_Tree.prefab`，用 Ctrl+D 复制，给新预制体改名。
+2. 双击新预制体，选中根节点，在 Inspector 的 `Placement Item` 中将新 PNG 的 Sprite 拖入“2D 图片”。PNG 的 Texture Type 必须为 `Sprite (2D and UI)`。
+3. 换图后自动更新图片尺寸和底部接地点；保存后把新预制体拖入 Layer1。只移动根节点，保持 VisualRoot/Art 的编辑旋转为零。
+4. 若只想改场景内的一棵树，可 Ctrl+D 复制场景物件，再在复制品的“2D 图片”字段换图；此修改仅影响该实例。需要所有同款树一起更新时，编辑它们共同引用的源预制体。
+
+这里的 2D 图片使用 `SpriteRenderer`，直接引用原 PNG 的 Sprite。Inspector 子节点中的 Material 是 Unity 默认的图片渲染材质，不是换树图的入口，不需要为每棵树创建材质。场景树不使用 Canvas 的 UI Image。
+
+## 在 Layer1 对照 Scene 和 Game
+
+在 Scene 的“场景镜头”面板选择“游戏镜头”，再点“恢复正式镜头”。Layer1 会直接读取本场景的游戏相机；跟随镜头的图片自动开启预览，编辑态 Game 也会显示朝向相机的图片。
+
+对照时看 Scene 中青色 Game 画框内的构图。Scene 和 Game 窗口比例不同时，Scene 会自动换算视野；网格、选中轮廓和操作手柄属于编辑辅助显示。自由视图和 2D 布局用于摆放，不代表最终游戏视角。预览只在渲染期间调整图片朝向，结束后恢复编辑数据。
+
 ## 当前示例
 
 - `Vegetation_Single_Tree.prefab`：直接引用 `Assets/NewVersion/map/地牢第一关卡素材1/树1.png`。
