@@ -78,8 +78,9 @@ namespace Game.Modules.Editor
 
         static SceneViewCameraWorkbench()
         {
-            // 每次脚本重载和进入编辑器都回到 Unity 原生自由视图。
-            mode = ViewMode.Free;
+            // Keep the user's working view when scripts reload or the editor reopens.
+            mode = (ViewMode)Mathf.Clamp(EditorPrefs.GetInt(PreferencePrefix + "Mode", (int)ViewMode.Free),
+                (int)ViewMode.Free, (int)ViewMode.GameCamera);
             elevation = EditorPrefs.GetFloat(PreferencePrefix + "Elevation", 45f);
             fieldOfView = EditorPrefs.GetFloat(PreferencePrefix + "FieldOfView", 40f);
             distance = EditorPrefs.GetFloat(PreferencePrefix + "Distance", 40f);
@@ -781,6 +782,16 @@ namespace Game.Modules.Editor
                                        item.gameObject.scene.IsValid() && item.gameObject.scene.isLoaded);
         }
 
+        static IEnumerable<CameraFacingVisual> SceneFacingVisuals()
+        {
+            IEnumerable<CameraFacingVisual> faces = Object.FindObjectsOfType<CameraFacingVisual>();
+            // FindObjectsOfType excludes the preview scene used by Prefab Mode.
+            var stage = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
+            if (stage != null && stage.prefabContentsRoot != null)
+                faces = faces.Concat(stage.prefabContentsRoot.GetComponentsInChildren<CameraFacingVisual>(true));
+            return faces.Where(face => face != null && face.isActiveAndEnabled).Distinct();
+        }
+
         static IEnumerable<CameraFacingVisual> VisibleFacingVisuals()
         {
             return VisibleItems().Where(item => item.visualRoot != null)
@@ -877,9 +888,9 @@ namespace Game.Modules.Editor
             {
                 // Render Game and its matching Scene view with the same billboard rule.
                 // Keep authored rotations untouched outside the render callbacks.
-                var faces = gamePreview || mode == ViewMode.GameCamera
+                var faces = gamePreview
                     ? Object.FindObjectsOfType<CameraFacingVisual>().Where(face => face.isActiveAndEnabled)
-                    : VisibleFacingVisuals();
+                    : mode == ViewMode.GameCamera ? SceneFacingVisuals() : VisibleFacingVisuals();
                 foreach (var facing in faces)
                 {
                     PreviewRotations[facing.transform] = facing.transform.rotation;
@@ -916,6 +927,7 @@ namespace Game.Modules.Editor
 
         static void SavePreferences()
         {
+            EditorPrefs.SetInt(PreferencePrefix + "Mode", (int)mode);
             EditorPrefs.SetFloat(PreferencePrefix + "Elevation", elevation);
             EditorPrefs.SetFloat(PreferencePrefix + "FieldOfView", fieldOfView);
             EditorPrefs.SetFloat(PreferencePrefix + "Distance", distance);
