@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 1100000000000000001}
   - component: {fileID: 3407239148545620350}
   m_Layer: 0
-  m_Name: Vegetation_Single_Tree
+  m_Name: Vegetation_Single_Tree1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
