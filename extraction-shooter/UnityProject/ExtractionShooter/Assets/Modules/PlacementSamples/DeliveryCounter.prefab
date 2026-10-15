@@ -9,6 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3092123308177430314}
+  - component: {fileID: 6276283729172581534}
   m_Layer: 0
   m_Name: VisualRoot
   m_TagString: Untagged
@@ -32,6 +33,22 @@ Transform:
   - {fileID: 7768213108271169726}
   m_Father: {fileID: 3476068021651857248}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6276283729172581534
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 548945354224590001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7bd6d369c9df357458de7a959bd303c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetCamera: {fileID: 0}
+  updateMode: 1
+  reverseForward: 0
+  additionalEulerAngles: {x: 0, y: 0, z: 0}
 --- !u!1 &1780663016544838837
 GameObject:
   m_ObjectHideFlags: 0
