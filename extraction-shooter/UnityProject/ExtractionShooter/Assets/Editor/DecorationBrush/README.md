@@ -40,3 +40,7 @@
 | Esc / 结束绘制 | 退出笔刷，恢复正常场景编辑 |
 
 当前支持平面摆放，保留源预制体尺寸和朝向。刷不出来时，先看窗口提示，再检查平面、高度、镜头角度和最小间距。
+
+普通地面图片（包括旧场景）需设置一次：**Sprite Renderer → Additional Settings → Sorting Layer → SceneGround**，然后保存场景。注意是 Sorting Layer，不是 Inspector 顶部的 Layer。
+
+项目提供的标准地面预制体会自动设置。笔刷使用的树、道具预制体保持 **Default**，前后遮挡自动处理，无需手动改 Order in Layer。

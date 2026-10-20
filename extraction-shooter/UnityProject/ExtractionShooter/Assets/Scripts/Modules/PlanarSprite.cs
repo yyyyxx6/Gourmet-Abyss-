@@ -8,6 +8,8 @@ namespace Game.Modules
     [ExecuteAlways]
     public sealed class PlanarSprite : MonoBehaviour
     {
+        public const string GroundSortingLayer = "SceneGround";
+
         public Transform frame;
         [HideInInspector] public PlanarPerspectiveProfile profile; // Legacy serialized reference; no longer controls artwork orientation.
         public SpriteRenderer visual;
@@ -16,10 +18,21 @@ namespace Game.Modules
         public Transform contactPoint;
         public bool useWorldAxesWhenUnbound;
         public bool xzGround;
+        private void OnEnable() { Refresh(); }
         private void LateUpdate() { Refresh(); }
         public void Refresh()
         {
             if (visual == null) return;
+            // Ground belongs below the object layer regardless of world depth or orderOffset.
+            // Keep custom artwork layers; only release our ground layer when changing roles.
+            if (ground)
+            {
+                if (visual.sortingLayerName != GroundSortingLayer)
+                    visual.sortingLayerName = GroundSortingLayer;
+            }
+            else if (visual.sortingLayerID != 0 && visual.sortingLayerName == GroundSortingLayer)
+                visual.sortingLayerID = 0;
+
             var effectiveFrame = frame;
             if (effectiveFrame == null && useWorldAxesWhenUnbound)
             {
