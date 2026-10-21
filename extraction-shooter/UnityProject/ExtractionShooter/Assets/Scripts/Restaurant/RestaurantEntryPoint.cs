@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using Game.Core;
 using GourmetAbyss.CameraSystem;
@@ -63,8 +64,16 @@ public class RestaurantEntryPoint : MonoSingleton<RestaurantEntryPoint>
     private CameraPlanarBounds _cachedCameraBounds;
     private bool _hasCachedCameraBounds;
     private GameObject _runtimeCameraAnchor;
+    [SerializeField] private Transform ingredientStorageAnchor;
+    [SerializeField, Min(0.01f)] private float ingredientTransferDuration = 0.6f;
+    private Coroutine _ingredientTransferRoutine;
+    private GameObject _ingredientTransferVisual;
+    private GameObject _backpackPresentation;
+    private bool _wasBackpackActive;
+    public bool IsTransferringIngredients { get; private set; }
 
     public bool IsEntered => _isEntered;
+    public Transform IngredientStorageOrigin => ResolveIngredientStorageAnchor();
 
     protected override void OnAwake()
     {
@@ -136,10 +145,21 @@ public class RestaurantEntryPoint : MonoSingleton<RestaurantEntryPoint>
 
     private void EnterEntryState()
     {
-        if (_isEntered) return;
+        TryEnterRestaurant(_cachedPlayer);
+    }
 
-        TopDownController player = _cachedPlayer;
-        if (player == null) return;
+    public bool TryEnterRestaurant(TopDownController player)
+    {
+        if (_isEntered || player == null || player.isDead || !player.isActiveAndEnabled ||
+            (PlayerStateManager.instance != null &&
+             (PlayerStateManager.instance.currentState != PlayerState.UpGround || PlayerStateManager.instance.isSettingUIActive)) ||
+            (LevelManager.instance != null && LevelManager.instance.IsTransitioning())) return false;
+        InventoryManager inventory = InventoryManager.instance;
+        if (inventory == null) return false;
+        List<InventoryManager.RestaurantTransferSource> sources;
+        if (!RestaurantIngredientStorage.EnsureExists().TryTransferFromBackpack(inventory, out sources)) return false;
+        _backpackPresentation = inventory.InventoryPresentationRoot;
+        _wasBackpackActive = _backpackPresentation != null && _backpackPresentation.activeSelf;
 
         SaveCameraStateBeforeEnter();
         AcquireRestaurantCamera();
@@ -155,6 +175,56 @@ public class RestaurantEntryPoint : MonoSingleton<RestaurantEntryPoint>
         RefreshRestaurantMenuOnEnter();
 
         AudioManager.Instance?.PlayAudio("3");
+        if (sources.Count > 0)
+        {
+            IsTransferringIngredients = true;
+            _ingredientTransferRoutine = StartCoroutine(PresentIngredientDeposit(sources));
+        }
+        else SetBackpackHidden();
+        return true;
+    }
+
+    private IEnumerator PresentIngredientDeposit(List<InventoryManager.RestaurantTransferSource> sources)
+    {
+        // The module adapter opens its HUD and selects the restaurant camera in LateUpdate.
+        yield return null;
+        _ingredientTransferVisual = RestaurantIngredientTransferPresentation.Create(sources);
+        yield return RestaurantIngredientTransferPresentation.Animate(_ingredientTransferVisual, sources,
+            ResolveIngredientStorageAnchor(), ingredientTransferDuration);
+        _ingredientTransferVisual = null;
+        _ingredientTransferRoutine = null;
+        IsTransferringIngredients = false;
+        if (_isEntered) SetBackpackHidden();
+    }
+
+    private Transform ResolveIngredientStorageAnchor()
+    {
+        if (ingredientStorageAnchor != null) return ingredientStorageAnchor;
+        foreach (RestaurantModuleAdapter adapter in FindObjectsOfType<RestaurantModuleAdapter>(true))
+        {
+            if (adapter.entry != this || adapter.pair == null || adapter.pair.world == null) continue;
+            Transform anchor = adapter.pair.world.GetAnchor("storage");
+            if (anchor != null) return anchor;
+            foreach (Transform candidate in adapter.pair.world.GetComponentsInChildren<Transform>(true))
+                if (candidate.name == "Cabinet") return candidate;
+        }
+        return restaurantAnchor;
+    }
+
+    private void SetBackpackHidden()
+    {
+        if (_backpackPresentation != null) _backpackPresentation.SetActive(false);
+    }
+
+    private void FinishIngredientPresentation()
+    {
+        if (_ingredientTransferRoutine != null) StopCoroutine(_ingredientTransferRoutine);
+        _ingredientTransferRoutine = null;
+        if (_ingredientTransferVisual != null) Destroy(_ingredientTransferVisual);
+        _ingredientTransferVisual = null;
+        IsTransferringIngredients = false;
+        if (_backpackPresentation != null) _backpackPresentation.SetActive(_wasBackpackActive);
+        _backpackPresentation = null;
     }
 
     private static void RefreshRestaurantMenuOnEnter()
@@ -171,7 +241,9 @@ public class RestaurantEntryPoint : MonoSingleton<RestaurantEntryPoint>
     /// </summary>
     public void LeaveRestaurant()
     {
+        if (!_isEntered) return;
         _isEntered = false;
+        FinishIngredientPresentation();
         HideDecorationPanel();
         RestoreRestaurantCamera();
         RestorePlayerMovement();

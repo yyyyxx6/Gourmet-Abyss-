@@ -31,13 +31,8 @@ public sealed class RestaurantModuleAdapter : MonoBehaviour, IQueueIngredientPre
         float duration = .6f, float spawnInterval = 0f, float landingDuration = .2f)
     {
         // Keep coroutine ownership with the existing business host: closing HUD must not cancel an order.
-        foreach (var source in sources)
-        {
-            var point = ModuleScreenFlight.ScreenPoint(source.fromUITransform, source.fromWorldPos);
-            restaurant.StartCoroutine(ModuleScreenFlight.Play(source.icon, point, target.transform, duration));
-            if (spawnInterval > 0f) yield return new WaitForSeconds(spawnInterval);
-        }
-        yield return new WaitForSeconds(Mathf.Max(.01f, duration + landingDuration + .02f));
+        yield return RestaurantIngredientTransferPresentation.PlayQueue(sources, target.transform, duration, spawnInterval);
+        yield return new WaitForSecondsRealtime(Mathf.Max(.01f, landingDuration));
     }
 
     private void Start()
@@ -75,6 +70,17 @@ public sealed class RestaurantModuleAdapter : MonoBehaviour, IQueueIngredientPre
             pair.SetOpen(open); wasOpen = open;
         }
         if (!open) return;
+        // The decorative module bag also follows the entry transfer lifecycle.
+        if (pair != null && pair.hud != null)
+        {
+            foreach (Transform candidate in pair.hud.GetComponentsInChildren<Transform>(true))
+            {
+                if (candidate.name != "Bag") continue;
+                bool showBag = entry.IsTransferringIngredients;
+                if (candidate.gameObject.activeSelf != showBag) candidate.gameObject.SetActive(showBag);
+                break;
+            }
+        }
         if(runtimeDebug==null)runtimeDebug=FindObjectOfType<RunIngredientDebugUI>(true);
         if(runtimeDebug!=null&&pair.presentation!=null)pair.presentation.RegisterSuspended(runtimeDebug.GetComponent<Canvas>());
         var money=pair.hud.GetText("money");var progress=pair.hud.GetImage("progress");
