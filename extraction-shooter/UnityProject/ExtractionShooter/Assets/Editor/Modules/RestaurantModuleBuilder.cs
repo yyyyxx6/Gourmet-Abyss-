@@ -37,7 +37,8 @@ namespace Game.Modules.Editor
             Directory.CreateDirectory(Folder + "/Sprites");
             AssetDatabase.Refresh();
             profile = ScriptableObject.CreateInstance<PlanarPerspectiveProfile>();
-            profile.distance = 27f; profile.tiltFromNormal = 32f; profile.fieldOfView = 40f;
+            profile.distance = 27f; profile.tiltFromNormal = 45f; profile.fieldOfView = 40f;
+            profile.viewStandard = AssetDatabase.LoadAssetAtPath<WorldViewStandard>(PlacementTools.StandardPath);
             profile.panLimit = 1.5f;
             AssetDatabase.CreateAsset(profile, Folder + "/RestaurantPerspective.asset");
             BuildWorld();
@@ -105,14 +106,11 @@ namespace Game.Modules.Editor
             var frame = new GameObject("GroundFrame").transform; frame.SetParent(world.transform, false);
             world.view = world.gameObject.AddComponent<PlanarPerspectiveView>();
             world.view.frame = frame; world.view.profile = profile;
-            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(Art + "餐厅背景.png");
-            // Rects select existing artwork; no generated/repainted floor texture.
-            Sprite floor = Slice(texture, "Floor", new UnityEngine.Rect(200, 470, texture.width-400, texture.height-1030), new Vector2(.5f,.5f));
-            Sprite wall = Slice(texture, "BackWall", new UnityEngine.Rect(0, texture.height-550, texture.width,550), new Vector2(.5f,0));
-            Sprite front = Slice(texture, "FrontRail", new UnityEngine.Rect(0,0,texture.width,470), new Vector2(.5f,0));
-            Place("Ground", floor, new Vector2(0,0), 22f, true, 12f);
-            Place("BackWall", wall, new Vector2(0,6), 23.5f, false);
-            Place("EntranceRail", front, new Vector2(0,-6.3f), 23.5f, false);
+            // Keep the complete artist source as the only background scale reference.
+            // Do not create normalized/cropped intermediate sprites from an imported texture.
+            Sprite background = AssetDatabase.LoadAssetAtPath<Sprite>(Art + "餐厅背景.png");
+            if (background == null) throw new InvalidOperationException("餐厅背景必须作为完整 Sprite 导入。");
+            Place("Ground", background, new Vector2(0,0), 23.5f, false);
             for(int i=0;i<2;i++)
             {
                 Place("Stove"+i, Load("灶台1.png"), new Vector2(-6.2f+i*2.5f,4.3f), 2.2f, false);
@@ -161,6 +159,9 @@ namespace Game.Modules.Editor
             var go=new GameObject(name);go.transform.SetParent(visualRoot,false);
             go.transform.localPosition=new Vector3(point.x,point.y,ground?.02f:0f);
             var sr=go.AddComponent<SpriteRenderer>();sr.sprite=sprite;
+            // Author once in the prefab: artwork faces the fixed view, ground remains on the gameplay plane.
+            // PlanarSprite only sorts; it never changes this rotation in edit or play mode.
+            go.transform.rotation=ground?world.view.frame.rotation:world.view.Pose(Vector2.zero).Rotation;
             go.transform.localScale=new Vector3(width/sprite.bounds.size.x,
                 depth>0?depth/sprite.bounds.size.y:width/sprite.bounds.size.x,1);
             var facing=go.AddComponent<PlanarSprite>();facing.frame=world.view.frame;

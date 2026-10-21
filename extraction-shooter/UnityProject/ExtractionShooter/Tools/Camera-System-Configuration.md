@@ -9,6 +9,8 @@
 
 小镇 `CameraFollow.defaultSource` 保持 `Auto`；三层地牢明确设为 `Dungeon`，共用 `Assets/Modules/Combat/DungeonPerspective.asset`。`target` 必须指向玩家。餐厅在进入期间单独请求透视镜头，见 `模块制作规范.md`。
 
+餐厅与战斗的视线/地面夹角现统一为 45°、垂直 FOV 40°，由 `Assets/Modules/Shared/WorldViewStandard.asset` 统一提供。餐厅 XY 地面镜头 X=-45°；战斗 XZ 地面镜头 X=45°。配置里的旧角度/FOV 字段只在未绑定共享规范时生效。距离和输入仍由各模块独立配置。
+
 ## 默认参数
 
 小镇沿用默认值；地牢使用共享 `DungeonPerspectiveProfile`，其鼠标参数如下。

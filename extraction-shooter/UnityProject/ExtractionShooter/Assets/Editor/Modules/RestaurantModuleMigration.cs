@@ -23,6 +23,8 @@ namespace Game.Modules.Editor
             if (EditorApplication.isPlaying) throw new InvalidOperationException("Stop Play first.");
             var adapter = Object.FindObjectOfType<RestaurantModuleAdapter>(true);
             if (adapter == null) throw new InvalidOperationException("Build restaurant first.");
+            if (adapter.pair.world.GetComponentInChildren<PlacementItem>(true) != null)
+                throw new InvalidOperationException("Restaurant uses standard placement items. Edit prefabs; legacy upgrade cannot overwrite this hierarchy.");
             UpgradeWorld();
             UpgradeHUD();
             var pair = adapter.pair;
@@ -107,10 +109,23 @@ namespace Game.Modules.Editor
             {
                 var world = root.GetComponent<ModuleWorld>();
                 var visual = root.transform.Find("VisualRoot");
-                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/NewVersion/map/餐厅1.2/餐厅背景.png");
-                SetSlice(visual.Find("Ground"), tex, "FloorNormalized", new Rect(.054f,.17f,.9f,.62f), new Vector2(.5f,.5f),22,12);
-                SetSlice(visual.Find("BackWall"), tex, "WallNormalized", new Rect(0,.79f,1,.21f),new Vector2(.5f,0),23.5f,0);
-                SetSlice(visual.Find("EntranceRail"), tex, "RailNormalized", new Rect(0,0,1,.17f),new Vector2(.5f,.95f),23.5f,0);
+                var background = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/NewVersion/map/餐厅1.2/餐厅背景.png");
+                if (background == null) throw new InvalidOperationException("餐厅背景必须直接作为完整 Sprite 导入。");
+                var ground = visual.Find("Ground");
+                var groundRenderer = ground.GetComponent<SpriteRenderer>();
+                groundRenderer.sprite = background;
+                groundRenderer.enabled = true;
+                ground.localScale = Vector3.one * (23.5f / background.bounds.size.x);
+                ground.localPosition = new Vector3(0, 0, .15f);
+                foreach (var layerName in new[] { "BackWall", "EntranceRail" })
+                {
+                    var layer = visual.Find(layerName);
+                    if (layer == null) continue;
+                    var renderer = layer.GetComponent<SpriteRenderer>();
+                    if (renderer != null) { renderer.sprite = null; renderer.enabled = false; }
+                    var sorter = layer.GetComponent<PlanarSprite>();
+                    if (sorter != null) sorter.enabled = false;
+                }
                 foreach (var anchor in world.anchors)
                 {
                     var parts=anchor.id.Split('/');
@@ -125,8 +140,10 @@ namespace Game.Modules.Editor
                 {
                     var go=new GameObject("SurroundingGround");go.transform.SetParent(visual,false);go.transform.localPosition=new Vector3(0,0,.2f);go.AddComponent<SpriteRenderer>();surround=go.transform;
                 }
-                var grassTex=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/NewVersion/map/餐厅/canting_0009_caopin.png");
-                SetSlice(surround,grassTex,"SurroundingGrass",new Rect(0,0,1,1),new Vector2(.5f,.5f),70,50);
+                var grassSprite=AssetDatabase.LoadAssetAtPath<Sprite>("Assets/NewVersion/map/餐厅/canting_0009_caopin.png");
+                if (grassSprite == null) throw new InvalidOperationException("周边草地必须作为完整 Sprite 导入。");
+                surround.GetComponent<SpriteRenderer>().sprite=grassSprite;
+                surround.localScale=new Vector3(70f/grassSprite.bounds.size.x,50f/grassSprite.bounds.size.y,1);
                 surround.GetComponent<SpriteRenderer>().sortingOrder=-1100;
                 var front=visual.Find("EntranceRail");front.localPosition=new Vector3(0,-6,0);
                 root.GetComponent<ModuleWorld>().view.profile.distance=31;
@@ -134,18 +151,6 @@ namespace Game.Modules.Editor
                 PrefabUtility.SaveAsPrefabAsset(root,path);
             }
             finally { PrefabUtility.UnloadPrefabContents(root); }
-        }
-        static void SetSlice(Transform target,Texture2D tex,string name,Rect normalized,Vector2 pivot,float width,float depth)
-        {
-            string path=Folder+"/Sprites/"+name+".asset";
-            var sprite=AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            if(sprite==null)
-            {
-                sprite=Sprite.Create(tex,new Rect(normalized.x*tex.width,normalized.y*tex.height,normalized.width*tex.width,normalized.height*tex.height),pivot,100,0,SpriteMeshType.FullRect);
-                sprite.name=name;AssetDatabase.CreateAsset(sprite,path);
-            }
-            target.GetComponent<SpriteRenderer>().sprite=sprite;
-            target.localScale=new Vector3(width/sprite.bounds.size.x,depth>0?depth/sprite.bounds.size.y:width/sprite.bounds.size.x,1);
         }
         static void UpgradeHUD()
         {

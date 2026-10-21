@@ -26,10 +26,10 @@ namespace GourmetAbyss.CameraSystem
 
         public CameraPose Pose(Vector2 offset)
         {
-            Quaternion rotation = frame.rotation * Quaternion.Euler(-profile.tiltFromNormal, 0, 0);
+            Quaternion rotation = frame.rotation * Quaternion.Euler(-profile.EffectiveTilt, 0, 0);
             Vector3 center = frame.position + frame.right * offset.x + frame.up * offset.y;
             return new CameraPose(center - rotation * Vector3.forward * profile.distance,
-                rotation, 9f, true, profile.fieldOfView);
+                rotation, 9f, true, profile.EffectiveFieldOfView);
         }
 
         public bool TryEvaluate(in CameraEvaluationContext context, out CameraShotResult result)

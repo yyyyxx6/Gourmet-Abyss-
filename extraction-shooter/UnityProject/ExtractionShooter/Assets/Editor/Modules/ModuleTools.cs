@@ -32,6 +32,9 @@ namespace Game.Modules.Editor
                 throw new InvalidOperationException("A module requires both world and HUD prefabs.");
             if(definition.worldPrefab.view==null || definition.worldPrefab.view.profile==null)
                 throw new InvalidOperationException("Missing perspective view/profile.");
+            if(definition.worldPrefab.GetComponentInChildren<PlacementItem>(true)!=null)
+                PlacementTools.ValidateTree(definition.worldPrefab.gameObject);
+            PlacementPrefabLinks.ValidateWorld(definition.worldPrefab);
             var anchors=definition.worldPrefab.anchors;
             if(anchors.Any(a=>string.IsNullOrWhiteSpace(a.id)||a.point==null) || anchors.GroupBy(a=>a.id).Any(g=>g.Count()>1))
                 throw new InvalidOperationException("Anchor IDs must be unique and have targets.");

@@ -75,3 +75,7 @@ crashlytics-build.properties
 
 # 全局对象审计工具的输出（菜单 Tools/全局对象审计），每次运行自动重新生成
 /AuditSnapshots/
+
+# 本地美术验收内容不提交；共享笔刷预设正常提交。
+/[Aa]ssets/ArtWorkspace/LocalTests/*
+!/[Aa]ssets/ArtWorkspace/LocalTests/.gitkeep
