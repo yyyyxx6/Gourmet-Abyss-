@@ -12,6 +12,25 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     public static RestaurantPanel instance => Instance;
 
     public IQueueIngredientPresentation QueueIngredientPresentation { get; set; }
+    private RestaurantIngredientStorage ingredientStorage;
+    private readonly HashSet<RestaurantIngredientStore.Reservation> pendingIngredientOrders =
+        new HashSet<RestaurantIngredientStore.Reservation>();
+    private bool ingredientStockUiDirty;
+
+    public long GetIngredientCount(ResourceType type) => GetStoredIngredientCount(type);
+
+    private static long GetStoredIngredientCount(ResourceType type) =>
+        RestaurantIngredientStorage.Instance != null ? RestaurantIngredientStorage.Instance.GetCount(type) : 0L;
+
+    private void OnIngredientStockChanged() { ingredientStockUiDirty = true; }
+
+    private void CancelPendingIngredientOrders()
+    {
+        if (ingredientStorage != null)
+            foreach (var reservation in new List<RestaurantIngredientStore.Reservation>(pendingIngredientOrders))
+                ingredientStorage.Refund(reservation);
+        pendingIngredientOrders.Clear();
+    }
 
     [Header("食材背包UI配置")]
     public GameObject foodItemPrefabs;
@@ -175,6 +194,9 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     private void OnEnable()
     {
+        ingredientStorage = RestaurantIngredientStorage.EnsureExists();
+        ingredientStorage.Changed -= OnIngredientStockChanged;
+        ingredientStorage.Changed += OnIngredientStockChanged;
         if (WeaponStatsManager.Instance != null)
         {
             WeaponStatsManager.Instance.OnRestaurantStatsChanged -= SyncRestaurantUnitsFromStats;
@@ -236,6 +258,8 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     private void OnDisable()
     {
+        CancelPendingIngredientOrders();
+        if (ingredientStorage != null) ingredientStorage.Changed -= OnIngredientStockChanged;
         if (WeaponStatsManager.Instance != null)
         {
             WeaponStatsManager.Instance.OnRestaurantStatsChanged -= SyncRestaurantUnitsFromStats;
@@ -440,66 +464,66 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     /// <summary>点击菜谱：入队（扣食材），再由空闲锅自动开始烹饪。</summary>
     public bool TryEnqueueDishForCooking(DishRecipe recipe)
     {
-        if (recipe == null) return false;
+        if (!isActiveAndEnabled || recipe == null || recipe.locked) return false;
         EnsureCookQueueDataSize();
-        if (!CheckIngredientsAvailableForRecipe(recipe))
+        if (FindSuitableCookQueueSlotIndex(recipe) < 0) return false;
+        RestaurantIngredientStorage storage = RestaurantIngredientStorage.EnsureExists();
+        RestaurantIngredientStore.Reservation reservation;
+        if (!storage.TryReserveRecipe(recipe, out reservation)) return false;
+        if (!isActiveAndEnabled)
         {
-            Debug.Log("食材不足，无法加入烹饪队列：" + recipe.dishName);
+            storage.Refund(reservation);
             return false;
         }
-
-        int idx = FindSuitableCookQueueSlotIndex(recipe);
-        if (idx < 0)
-        {
-            Debug.Log("烹饪排队已满：" + recipe.dishName);
-            return false;
-        }
-
-        if (InventoryManager.instance == null)
-            return false;
-
-        if (!InventoryManager.instance.TryBuildIngredientFlySourcesForRecipe(recipe, out List<InventoryManager.IngredientFlySource> flySources))
-            return false;
-
-        StartCoroutine(CoEnqueueDishAfterIngredientFly(recipe, flySources));
+        pendingIngredientOrders.Add(reservation);
+        StartCoroutine(CoEnqueueDishAfterIngredientFly(recipe, storage, reservation));
         return true;
     }
 
-    private IEnumerator CoEnqueueDishAfterIngredientFly(DishRecipe recipe, List<InventoryManager.IngredientFlySource> flySources)
+    private IEnumerator CoEnqueueDishAfterIngredientFly(DishRecipe recipe, RestaurantIngredientStorage storage,
+        RestaurantIngredientStore.Reservation reservation)
     {
-        if (recipe == null) yield break;
-
-        int idx = FindSuitableCookQueueSlotIndex(recipe);
-        if (idx < 0) yield break;
-
-        // 关键：在生成食材飞出表现（即开始飞行）之前就先扣除背包数量，
-        // 这样“数量减少”的时刻与飞出物生成的时刻一致，而不是落点/飞行动画结束后才减少。
-        if (!ConsumeIngredientsForRecipe(recipe))
-            yield break;
-
-        yield return StartCoroutine(PlayIngredientFlyToQueueCoroutine(flySources, idx));
-
-        idx = FindSuitableCookQueueSlotIndex(recipe);
-        if (idx < 0)
+        try
         {
-            RefundIngredientsForRecipe(recipe);
-            if (GameValManager.Instance != null && foodItemParent != null)
-                GenerateFoodItems();
-            yield break;
+            int index = FindSuitableCookQueueSlotIndex(recipe);
+            if (index < 0 || !reservation.IsPending) yield break;
+            var sources = BuildWarehouseIngredientFlySources(reservation.Quantities);
+            yield return StartCoroutine(PlayIngredientFlyToQueueCoroutine(sources, index));
+            if (!isActiveAndEnabled || !reservation.IsPending) yield break;
+            index = FindSuitableCookQueueSlotIndex(recipe);
+            if (index < 0 || !TryCommitRecipeToCookQueueSlot(index, recipe)) yield break;
+            storage.Commit(reservation);
+            RefreshCookQueueUI();
+            PulseCookQueueSlotIfValid(index);
+            TryDispatchQueueToPots();
+            StartCoroutine(CoRefreshMenuUiDeferred());
         }
-
-        if (!TryCommitRecipeToCookQueueSlot(idx, recipe))
+        finally
         {
-            RefundIngredientsForRecipe(recipe);
-            if (GameValManager.Instance != null && foodItemParent != null)
-                GenerateFoodItems();
-            yield break;
+            if (storage != null) storage.Refund(reservation);
+            pendingIngredientOrders.Remove(reservation);
         }
+    }
 
-        RefreshCookQueueUI();
-        PulseCookQueueSlotIfValid(idx);
-        TryDispatchQueueToPots();
-        StartCoroutine(CoRefreshMenuUiDeferred());
+    private List<InventoryManager.IngredientFlySource> BuildWarehouseIngredientFlySources(
+        IReadOnlyDictionary<ResourceType, long> quantities)
+    {
+        var sources = new List<InventoryManager.IngredientFlySource>();
+        Transform origin = RestaurantEntryPoint.Instance != null
+            ? RestaurantEntryPoint.Instance.IngredientStorageOrigin : ingredientSpawnParent;
+        Vector3 point = origin != null ? origin.position : transform.position;
+        // Ordinary recipes get one icon per unit; keep malformed or extreme costs from spawning unbounded objects.
+        foreach (var entry in quantities)
+        {
+            ResourceItem info = GameValManager.Instance != null ? GameValManager.Instance.GetResourceInfo(entry.Key) : null;
+            for (long index = 0; index < entry.Value && sources.Count < 64; index++)
+                sources.Add(new InventoryManager.IngredientFlySource
+                {
+                    itemType = entry.Key, icon = info != null ? info.Icon : null,
+                    slotIndex = -1, fromUITransform = null, fromWorldPos = point
+                });
+        }
+        return sources;
     }
 
     private void PulseCookQueueSlotIfValid(int index)
@@ -552,35 +576,13 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     private bool CheckIngredientsAvailableForRecipe(DishRecipe recipe)
     {
-        if (recipe == null || recipe.ingredients == null || InventoryManager.instance == null)
-            return false;
-
-        foreach (DishIngredient ingredient in recipe.ingredients)
-        {
-            if (ingredient.requiredCount <= 0) continue;
-            if (InventoryManager.instance.GetItemCount(ingredient.resourceType) < ingredient.requiredCount)
-                return false;
-        }
-        return true;
+        return RestaurantIngredientStorage.Instance != null &&
+            RestaurantIngredientStorage.Instance.CanAffordRecipe(recipe);
     }
 
     private bool ConsumeIngredientsForRecipe(DishRecipe recipe)
     {
-        if (InventoryManager.instance == null || recipe == null) return false;
-        return InventoryManager.instance.TryConsumeIngredientsForRecipe(recipe);
-    }
-
-    private void RefundIngredientsForRecipe(DishRecipe recipe)
-    {
-        if (InventoryManager.instance == null || recipe == null || recipe.ingredients == null)
-            return;
-
-        for (int i = 0; i < recipe.ingredients.Count; i++)
-        {
-            DishIngredient ing = recipe.ingredients[i];
-            if (ing == null || ing.requiredCount <= 0) continue;
-            InventoryManager.instance.AddItem(ing.resourceType, ing.requiredCount);
-        }
+        return RestaurantIngredientStorage.EnsureExists().TryConsumeRecipe(recipe);
     }
 
     private bool TryCommitRecipeToCookQueueSlot(int idx, DishRecipe recipe)
@@ -937,6 +939,12 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     private void Update()
     {
+        if (ingredientStockUiDirty)
+        {
+            ingredientStockUiDirty = false;
+            if (GameValManager.Instance != null && foodItemParent != null) GenerateFoodItems();
+            if (dishParent != null) GenerateDishList();
+        }
         HandleDishMenuScrollWheel();
 
         if ((_dispatchFrameCounter++ % 12) != 0) return;
@@ -1119,9 +1127,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     private static void ApplyIngredientSideIndicator(DishIngredient ing, Image icon, Text countText)
     {
         if (ing == null) return;
-        int owned = InventoryManager.instance != null
-            ? InventoryManager.instance.GetItemCount(ing.resourceType)
-            : 0;
+        long owned = GetStoredIngredientCount(ing.resourceType);
         ResourceItem res = GameValManager.Instance != null
             ? GameValManager.Instance.GetResourceInfo(ing.resourceType)
             : null;
@@ -1359,31 +1365,44 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         }
 
         // 遍历资源列表
-        foreach (var item in GameValManager.Instance.resources)
+        var types = new HashSet<ResourceType>();
+        foreach (ResourceItem item in GameValManager.Instance.GetAllResources())
+            if (item != null && ResourceStorageRules.IsIngredient(item.type)) types.Add(item.type);
+        if (RestaurantIngredientStorage.Instance != null)
+            foreach (ResourceType type in RestaurantIngredientStorage.Instance.Store.Capture().Keys) types.Add(type);
+        var ordered = new List<ResourceType>(types);
+        ordered.Sort();
+        foreach (ResourceType type in ordered)
         {
-            // 只显示食物类资源
-            if (item.resourceKind != ResourceKind.Food || item.type==ResourceType.None) continue;
-
-            // 实例化预制体
-            GameObject foodGO = Instantiate(foodItemPrefabs, foodItemParent);
-            foodItemPrefabs script = foodGO.GetComponent<foodItemPrefabs>();
-            //print("EEEAAA");
-            //print(item.type);
-            foodGO.GetComponent<foodItemPrefabs>().resourceType = item.type;
-            if (script != null)
+            ResourceItem info = GameValManager.Instance.GetResourceInfo(type);
+            GameObject food = Instantiate(foodItemPrefabs, foodItemParent);
+            foodItemPrefabs widget = food.GetComponent<foodItemPrefabs>();
+            if (widget != null)
             {
-                int invCount = InventoryManager.instance != null
-                    ? InventoryManager.instance.GetItemCount(item.type)
-                    : 0;
-                // 设置图标和数量（数量来自背包）
-                script.foodIcon.sprite = item.Icon;
-                script.foodAmount.text = invCount.ToString();
-                //print("EEEAAAAA"+item.name);
-                //print("EEEAAAAA"+item.count);
+                widget.resourceType = type;
+                if (widget.foodIcon != null)
+                {
+                    widget.foodIcon.sprite = info != null ? info.Icon : null;
+                    widget.foodIcon.enabled = widget.foodIcon.sprite != null;
+                }
+                if (widget.foodAmount != null)
+                {
+                    long count = GetIngredientCount(type);
+                    widget.foodAmount.text = info != null && info.Icon != null ? count.ToString() :
+                        RestaurantIngredientStorage.GetDisplayName(type) + " " + count;
+                    FitIngredientQuantityText(widget.foodAmount);
+                }
             }
-
-            currentFoodItems.Add(foodGO);
+            currentFoodItems.Add(food);
         }
+    }
+
+    private static void FitIngredientQuantityText(Text label)
+    {
+        if (label == null) return;
+        label.resizeTextForBestFit = true;
+        label.resizeTextMinSize = 10;
+        label.resizeTextMaxSize = Mathf.Max(18, label.fontSize);
     }
 
     /// <summary>
@@ -1393,13 +1412,14 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     {
         foreach (var go in currentFoodItems)
         {
-            if (go != null) Destroy(go);
+            if (go != null) { go.SetActive(false); Destroy(go); }
         }
         currentFoodItems.Clear();
 
         // 或者直接清空父物体下所有子物体（更保险）
         for (int i = foodItemParent.childCount - 1; i >= 0; i--)
         {
+            foodItemParent.GetChild(i).gameObject.SetActive(false);
             Destroy(foodItemParent.GetChild(i).gameObject);
         }
     }
@@ -1409,16 +1429,9 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     /// </summary>
     public void SetFoodInformation(ResourceType resourceType)
     {
-        foreach (var item in GameValManager.Instance.resources)
-        {
-            if (item.type == resourceType)
-            {
-                foodInformationTitle.text = item.name;
-                foodInformationDescription.text = item.description;
-                break;
-            }
-        }
-
+        ResourceItem info = GameValManager.Instance != null ? GameValManager.Instance.GetResourceInfo(resourceType) : null;
+        if (foodInformationTitle != null) foodInformationTitle.text = RestaurantIngredientStorage.GetDisplayName(resourceType);
+        if (foodInformationDescription != null) foodInformationDescription.text = info != null ? info.description : "\u9910\u5385\u98df\u6750\u5e93\u5b58";
     }
 
     /// <summary>
@@ -1466,9 +1479,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
                 ResourceItem resItem = GameValManager.Instance != null
                     ? GameValManager.Instance.GetResourceInfo(ing.resourceType)
                     : null;
-                int owned = InventoryManager.instance != null
-                    ? InventoryManager.instance.GetItemCount(ing.resourceType)
-                    : 0;
+                long owned = GetIngredientCount(ing.resourceType);
 
                 if (resItem != null)
                 {
@@ -1478,8 +1489,10 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
                 }
                 else
                 {
-                    foodScript.foodAmount.text = $"{owned}/{ing.requiredCount}";
+                    foodScript.foodAmount.text = RestaurantIngredientStorage.GetDisplayName(ing.resourceType) + $" {owned}/{ing.requiredCount}";
                 }
+                foodScript.resourceType = ing.resourceType;
+                FitIngredientQuantityText(foodScript.foodAmount);
             }
 
             bool canCook = RecipeCanBeCookable(recipe);
@@ -1535,7 +1548,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     {
         foreach (var go in currentDishes)
         {
-            if (go != null) Destroy(go);
+            if (go != null) { go.SetActive(false); Destroy(go); }
         }
         currentDishes.Clear();
         _dishItemWidgets.Clear();
@@ -1544,6 +1557,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
         for (int i = dishParent.childCount - 1; i >= 0; i--)
         {
+            dishParent.GetChild(i).gameObject.SetActive(false);
             Destroy(dishParent.GetChild(i).gameObject);
         }
     }

@@ -555,6 +555,17 @@ public class InventoryManager : MonoSingleton<InventoryManager>
 
     public bool ApplyInventorySnapshot(InventorySnapshot snapshot)
     {
+        if (!CanApplyInventorySnapshot(snapshot)) return false;
+
+        foreach (InventorySlotSnapshot captured in snapshot.Slots)
+            slots[captured.Index].ApplySnapshotData(captured);
+
+        RefreshAppliedInventorySnapshot(snapshot);
+        return true;
+    }
+
+    public bool CanApplyInventorySnapshot(InventorySnapshot snapshot)
+    {
         if (snapshot == null || snapshot.Slots.Count != usableSlotCount) return false;
 
         // Validate the complete layout before any live slot is changed.
@@ -567,8 +578,11 @@ public class InventoryManager : MonoSingleton<InventoryManager>
                 return false;
         }
 
-        foreach (InventorySlotSnapshot captured in snapshot.Slots)
-            slots[captured.Index].ApplySnapshotData(captured);
+        return true;
+    }
+
+    private void RefreshAppliedInventorySnapshot(InventorySnapshot snapshot)
+    {
 
         // A broken display must not leave half an inventory applied or replay a resource transfer.
         foreach (InventorySlotSnapshot captured in snapshot.Slots)
@@ -590,6 +604,55 @@ public class InventoryManager : MonoSingleton<InventoryManager>
         {
             Debug.LogException(error, this);
         }
+    }
+
+    public struct RestaurantTransferSource
+    {
+        public ResourceType type;
+        public int quantity;
+        public Sprite icon;
+        public Vector2 screenPoint;
+    }
+
+    public GameObject InventoryPresentationRoot => gridParent == null ? null :
+        (gridParent.parent != null ? gridParent.parent.gameObject : gridParent.gameObject);
+
+    public bool TryTransferIngredientsToRestaurant(RestaurantIngredientStore destination,
+        out List<RestaurantTransferSource> visuals)
+    {
+        visuals = new List<RestaurantTransferSource>();
+        if (destination == null) return false;
+        InventorySnapshot before = CaptureInventory();
+        var quantities = new Dictionary<ResourceType, long>();
+        var retained = new List<InventorySlotSnapshot>();
+        foreach (InventorySlotSnapshot slot in before.Slots)
+        {
+            if (slot.IsEmpty || !ResourceStorageRules.IsIngredient(slot.ItemType))
+            {
+                retained.Add(slot);
+                continue;
+            }
+            long previous;
+            quantities.TryGetValue(slot.ItemType, out previous);
+            quantities[slot.ItemType] = previous + slot.Count;
+            Transform origin = slots[slot.Index].transform;
+            visuals.Add(new RestaurantTransferSource
+            {
+                type = slot.ItemType, quantity = slot.Count, icon = GetResourceIcon(slot.ItemType),
+                screenPoint = Game.Modules.ModuleScreenFlight.ScreenPoint(origin, origin.position)
+            });
+            retained.Add(new InventorySlotSnapshot(slot.Index, ResourceType.None, 0, slot.Capacity));
+        }
+        var after = new InventorySnapshot(retained);
+        if (!CanApplyInventorySnapshot(after) || !destination.CanDeposit(quantities))
+        {
+            visuals.Clear();
+            return false;
+        }
+        // Publish both data stores before refreshing views or notifying stock observers.
+        if (!destination.TryDeposit(quantities)) { visuals.Clear(); return false; }
+        foreach (InventorySlotSnapshot slot in after.Slots) slots[slot.Index].ApplySnapshotData(slot);
+        RefreshAppliedInventorySnapshot(after);
         return true;
     }
 

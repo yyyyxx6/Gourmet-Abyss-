@@ -201,12 +201,17 @@ public static class FinalGameplayValidation
             permanent[entry.Key] = GameValManager.Instance.GetResourceCount(entry.Key);
         }
         MethodInfo consume = typeof(RestaurantPanel).GetMethod("ConsumeIngredientsForRecipe", BindingFlags.Instance | BindingFlags.NonPublic);
+        RestaurantIngredientStorage warehouse = RestaurantIngredientStorage.EnsureExists();
+        var warehouseIngredients = new Dictionary<ResourceType, long>();
+        foreach (KeyValuePair<ResourceType, int> entry in costs) warehouseIngredients.Add(entry.Key, entry.Value + 1L);
+        Check(warehouse.TryDeposit(warehouseIngredients), "The isolated restaurant fixture must credit its own ingredient warehouse.");
         Check(consume != null && (bool)consume.Invoke(RestaurantPanel.instance, new object[] { selected }),
             "The restaurant's actual cooking consumption entry must accept the configured recipe.");
         foreach (KeyValuePair<ResourceType, int> entry in costs)
         {
-            Check(InventoryManager.instance.GetItemCount(entry.Key) == 1, "Cooking must deduct the exact recipe quantity from the live inventory.");
-            Check(GameValManager.Instance.GetResourceCount(entry.Key) == permanent[entry.Key], "Cooking from the carried bag must not also consume permanent resources.");
+            Check(warehouse.GetCount(entry.Key) == 1, "Cooking must deduct the exact recipe quantity from restaurant stock.");
+            Check(InventoryManager.instance.GetItemCount(entry.Key) == entry.Value + 1, "Cooking from restaurant stock cannot also debit the carried bag.");
+            Check(GameValManager.Instance.GetResourceCount(entry.Key) == permanent[entry.Key], "Cooking from restaurant stock cannot also debit permanent resources.");
         }
         Debug.Log("FINAL_RESTAURANT_CONSUMPTION_PASS");
     }
@@ -374,15 +379,16 @@ public static class FinalGameplayValidation
         Check(gained.text == "\u672c\u5c40 +11" && owned.text == "\u62e5\u6709 " + (woodBaseline + 2).ToString(CultureInfo.InvariantCulture) &&
             outcome.gameObject.activeInHierarchy && outcome.text.Replace(" ", "") == "\u5e26\u51fa2\u00b7\u9057\u59319",
             "Death must distinguish eleven gathered units, two carried out, nine lost and the permanent owned total.");
-        Transform statistics = view.transform.Find("Panel/Statistics");
+        Transform statistics = view.detailsContent.Find("Statistics");
         Check(statistics != null && view.ingredientDeltaText.transform.IsChildOf(statistics) &&
             view.durationText.transform.IsChildOf(statistics) && view.killsText.transform.IsChildOf(statistics),
-            "All three summary statistics must belong to the fixed Panel/Statistics area.");
-        Check(!view.ingredientDeltaText.transform.IsChildOf(view.detailsContent) &&
-            !view.durationText.transform.IsChildOf(view.detailsContent) && !view.killsText.transform.IsChildOf(view.detailsContent),
-            "The three summary statistics must stay outside the reward scroll content.");
-        Check(view.ingredientDeltaText.text.Contains("-3") && view.ingredientDeltaText.color.r > view.ingredientDeltaText.color.g,
-            "The negative carried-food delta must be displayed in red.");
+            "All three summary statistics must belong to the shared top-aligned details content.");
+        Check(view.ingredientDeltaText.transform.IsChildOf(view.detailsContent) &&
+            view.durationText.transform.IsChildOf(view.detailsContent) && view.killsText.transform.IsChildOf(view.detailsContent),
+            "The three summary statistics must flow with rewards in the scroll content.");
+        Check(view.ingredientDeltaText.text == "1" && RunSessionManager.Instance.LastResult.CarriedIngredientCount == 1 &&
+            RunSessionManager.Instance.LastResult.IngredientDelta == -3,
+            "Death must display the retained total while preserving the separate net delta in result data.");
         Debug.Log("FINAL_REAL_UNLOCKS_AND_DEATH_PRESENTATION_PASS");
         view.retryButton.onClick.Invoke();
         Check(RunSessionManager.Instance.Phase == RunEndPhase.Transitioning, "The actual Layer3 retry button must start the transition.");
