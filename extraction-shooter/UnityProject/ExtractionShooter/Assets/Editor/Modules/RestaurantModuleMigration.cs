@@ -71,7 +71,11 @@ namespace Game.Modules.Editor
             var mainUI = adapter.legacyHUD.transform.parent;
             scope.hideWhileOpen = mainUI.Cast<Transform>()
                 .Where(t => t != adapter.legacyHUD.transform && t.name != "GlobalMessageParent")
-                .Select(t => t.GetComponent<CanvasGroup>() ?? t.gameObject.AddComponent<CanvasGroup>()).ToArray();
+                .Select(t => {
+                    var group = t.GetComponent<CanvasGroup>();
+                    if (group == null) group = t.gameObject.AddComponent<CanvasGroup>();
+                    return group;
+                }).ToArray();
             ConfigureBindings(adapter);
             EditorUtility.SetDirty(scope); EditorUtility.SetDirty(pair); EditorUtility.SetDirty(adapter);
             EditorSceneManager.MarkSceneDirty(adapter.gameObject.scene);

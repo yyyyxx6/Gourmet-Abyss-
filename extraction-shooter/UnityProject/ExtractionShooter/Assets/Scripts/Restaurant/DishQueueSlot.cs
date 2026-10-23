@@ -39,6 +39,7 @@ public class DishQueueSlot : MonoBehaviour
     [Tooltip("解锁后恢复的背景图；为空则用本组件 Awake 时 slotBackground 的 sprite")]
     [SerializeField] private Sprite normalSlotBackgroundSprite;
     [SerializeField] private Text itemCountText;
+    [SerializeField] private bool transparentNormalBackground;
 
     /// <summary>多出来的扩容预览格：仅展示锁/Look 图，不参与排队数据。</summary>
     private bool _isLockedPreviewSlot;
@@ -60,6 +61,8 @@ public class DishQueueSlot : MonoBehaviour
     {
         CacheNormalBackgroundIfNeeded();
         _isLockedPreviewSlot = locked;
+        if (transparentNormalBackground && slotBackground != null)
+            slotBackground.color = locked ? Color.white : Color.clear;
         if (locked)
         {
             if (slotBackground != null)

@@ -40,6 +40,7 @@ public sealed class RestaurantModuleAdapter : MonoBehaviour, IQueueIngredientPre
         Connect("exit", Exit);
         Connect("decoration", Decoration);
         Connect("recipes", Recipes);
+        Connect("cooking", OpenRecipes);
         if(decorationPopup!=null)decorationPopup.Closed+=OnDecorationClosed;
         var management = pair.hud.GetAction("management");
         if (management != null)
@@ -98,6 +99,12 @@ public sealed class RestaurantModuleAdapter : MonoBehaviour, IQueueIngredientPre
     }
     private void OnDecorationClosed(){if(decoration!=null)decoration.HidePanel();}
     private void Recipes() { if(decorationPopup!=null)decorationPopup.Close();if (recipesPopup != null) recipesPopup.Toggle(); }
+    private void OpenRecipes()
+    {
+        if (decorationPopup != null) decorationPopup.Close();
+        if (restaurant != null) restaurant.RefreshOnOpen();
+        if (recipesPopup != null && !recipesPopup.IsOpen) recipesPopup.Open();
+    }
     private void OnDisable()
     {
         if (restaurant != null && ReferenceEquals(restaurant.QueueIngredientPresentation, this))
@@ -112,6 +119,7 @@ public sealed class RestaurantModuleAdapter : MonoBehaviour, IQueueIngredientPre
     {
         Disconnect("exit", Exit); Disconnect("decoration", Decoration);
         Disconnect("recipes", Recipes);
+        Disconnect("cooking", OpenRecipes);
         if(decorationPopup!=null)decorationPopup.Closed-=OnDecorationClosed;
     }
 }
