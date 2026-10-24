@@ -151,7 +151,7 @@ namespace Game.Modules.Editor
         public static void EditorBillboardsMatchGameAndRestore()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-                "Assets/Environment/Vegetation/Prototype/Prefabs/Vegetation_Single_Tree.prefab");
+                "Assets/Environment/Vegetation/Prototype/Prefabs/Prefab tree 1.prefab");
             var root = Object.Instantiate(prefab);
             root.hideFlags = HideFlags.HideInHierarchy;
             var go = new GameObject("Editor billboard verification") { hideFlags = HideFlags.HideInHierarchy };
@@ -190,6 +190,71 @@ namespace Game.Modules.Editor
                 Object.DestroyImmediate(root); Object.DestroyImmediate(go); Object.DestroyImmediate(overlay);
             }
         }
+        public static void FreeSceneBillboardsKeepRuntimeOrientation()
+        {
+            var root = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Environment/Vegetation/Prototype/Prefabs/Prefab tree 1.prefab"));
+            var game = new GameObject("Game orientation verification");
+            var observer = new GameObject("Free Scene orientation verification");
+            var gameCamera = game.AddComponent<Camera>();
+            var sceneCamera = observer.AddComponent<Camera>();
+            sceneCamera.cameraType = CameraType.SceneView;
+            sceneCamera.enabled = false;
+            game.transform.rotation = Quaternion.Euler(45, 25, 0);
+            observer.transform.rotation = Quaternion.Euler(30, 205, 0);
+            var facing = root.GetComponentInChildren<CameraFacingVisual>();
+            var so = new SerializedObject(facing);
+            so.FindProperty("targetCamera").objectReferenceValue = gameCamera;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var modeField = typeof(SceneViewCameraWorkbench).GetField("mode", flags);
+            var previewField = typeof(SceneViewCameraWorkbench).GetField("previewFacing", flags);
+            var previousMode = modeField.GetValue(null);
+            var previousPreview = previewField.GetValue(null);
+            root.transform.rotation = Quaternion.Euler(0, 180, 0);
+            var authoredRotation = facing.transform.localRotation;
+            var rootRotation = root.transform.rotation;
+            var rootPosition = root.transform.position;
+            try
+            {
+                modeField.SetValue(null, Enum.Parse(modeField.FieldType, "Free"));
+                // Both old preference values must preview the actual game orientation.
+                foreach (bool preference in new[] { false, true })
+                {
+                    previewField.SetValue(null, preference);
+                    SceneViewCameraWorkbench.BeginSceneCamera(sceneCamera);
+                    var previewRotation = facing.transform.rotation;
+                    SceneViewCameraWorkbench.EndSceneCamera(sceneCamera);
+                    Require(Quaternion.Angle(facing.transform.localRotation, authoredRotation) < .01f,
+                        "Free Scene preview modified the authored visual rotation.");
+                    facing.AlignToCamera();
+                    Require(Quaternion.Angle(previewRotation, facing.transform.rotation) < .01f,
+                        "Free Scene and runtime use different billboard orientations.");
+                    Require(Vector3.Dot(facing.transform.up, game.transform.up) > .999f &&
+                        Vector3.Dot(facing.transform.right, game.transform.right) > .999f,
+                        "Runtime artwork is inverted or mirrored.");
+                    facing.transform.localRotation = authoredRotation;
+                }
+                modeField.SetValue(null, Enum.Parse(modeField.FieldType, "Layout2D"));
+                previewField.SetValue(null, false);
+                SceneViewCameraWorkbench.BeginSceneCamera(sceneCamera);
+                Require(Quaternion.Angle(facing.transform.localRotation, authoredRotation) < .01f,
+                    "2D layout must retain the authored plane.");
+                SceneViewCameraWorkbench.EndSceneCamera(sceneCamera);
+                Require(root.transform.position == rootPosition && root.transform.rotation == rootRotation,
+                    "Preview moved the placement root.");
+            }
+            finally
+            {
+                SceneViewCameraWorkbench.EndSceneCamera(sceneCamera);
+                modeField.SetValue(null, previousMode);
+                previewField.SetValue(null, previousPreview);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(game);
+                Object.DestroyImmediate(observer);
+            }
+        }
+
         public static void StandaloneDepthBeyondRestaurantRange()
         {
             var prefab=AssetDatabase.LoadAssetAtPath<GameObject>(PlacementTools.SampleFolder+"/Stove.prefab");

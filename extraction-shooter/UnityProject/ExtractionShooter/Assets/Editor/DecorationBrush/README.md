@@ -41,6 +41,8 @@
 
 当前支持平面摆放，保留源预制体尺寸和朝向。刷不出来时，先看窗口提示，再检查平面、高度、镜头角度和最小间距。
 
+跟随镜头的装饰在 Scene 自由视图中按游戏朝向预览。检查最终构图时，在 Scene 的 **场景镜头** 面板选择 **游戏镜头**；**2D 布局**用于平面排布。
+
 普通地面图片（包括旧场景）需设置一次：**Sprite Renderer → Additional Settings → Sorting Layer → SceneGround**，然后保存场景。注意是 Sorting Layer，不是 Inspector 顶部的 Layer。
 
 项目提供的标准地面预制体会自动设置。笔刷使用的树、道具预制体保持 **Default**，前后遮挡自动处理，无需手动改 Order in Layer。

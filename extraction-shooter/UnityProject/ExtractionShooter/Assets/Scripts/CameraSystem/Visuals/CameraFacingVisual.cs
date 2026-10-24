@@ -56,6 +56,9 @@ namespace GourmetAbyss.CameraSystem
                 ApplyAlignment(camera);
         }
 
+        /// <summary>编辑预览使用运行时的镜头选择规则，不改变已保存的朝向。</summary>
+        public Quaternion GameCameraRotation => RotationFor(ResolveCamera());
+
         private Camera ResolveCamera()
         {
             // Never write the automatically resolved camera into the authored override.

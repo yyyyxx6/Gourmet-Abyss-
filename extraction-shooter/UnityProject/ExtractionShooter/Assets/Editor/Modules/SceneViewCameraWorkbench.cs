@@ -121,7 +121,7 @@ namespace Game.Modules.Editor
             switch (mode)
             {
                 case ViewMode.Free:
-                    EditorGUILayout.HelpBox("使用 Unity 原生的移动、旋转和缩放，不自动修改 Scene 视角。", MessageType.None);
+                    EditorGUILayout.HelpBox("自由移动、旋转和缩放视角；跟随镜头的装饰按游戏朝向预览。", MessageType.None);
                     break;
                 case ViewMode.Layout2D:
                     DrawLayoutControls();
@@ -244,6 +244,8 @@ namespace Game.Modules.Editor
             EditorGUI.BeginChangeCheck();
             if (mode == ViewMode.GameCamera)
                 EditorGUILayout.LabelField("跟随镜头图片预览", "自动开启");
+            else if (mode == ViewMode.Free)
+                EditorGUILayout.LabelField("装饰朝向预览", "与游戏一致");
             else
                 previewFacing = EditorGUILayout.ToggleLeft("Scene 中模拟跟随镜头图片", previewFacing);
             showGameFrame = EditorGUILayout.ToggleLeft("显示 Game 画幅框", showGameFrame);
@@ -672,7 +674,7 @@ namespace Game.Modules.Editor
                 string label = showNames ? $"{item.name} · {CategoryLabel(item)}" : CategoryLabel(item);
                 if (item == selected && sceneView.camera != null && item.art != null && item.art.sprite != null)
                 {
-                    ProjectionDifference difference = MeasureProjection(item, sceneView.camera, previewFacing || mode == ViewMode.GameCamera);
+                    ProjectionDifference difference = MeasureProjection(item, sceneView.camera, SimulateSceneFacing);
                     label += $"\n比例 {difference.AspectPercent:0.#}% / 边缘 {difference.TrapezoidPercent:0.#}%";
                 }
                 Handles.Label(point + (item.xzGround ? Vector3.up : Vector3.back) * size * .08f,
@@ -693,7 +695,7 @@ namespace Game.Modules.Editor
             var sceneView = SceneView.lastActiveSceneView;
             if (item == null || sceneView == null || sceneView.camera == null || item.art == null || item.art.sprite == null)
                 return;
-            ProjectionDifference difference = MeasureProjection(item, sceneView.camera, previewFacing || mode == ViewMode.GameCamera);
+            ProjectionDifference difference = MeasureProjection(item, sceneView.camera, SimulateSceneFacing);
             MessageType type = IsInvalid(item) ? MessageType.Error :
                 difference.MaxPercent < 2f ? MessageType.Info : MessageType.Warning;
             EditorGUILayout.HelpBox($"{item.name} · {CategoryLabel(item)}\n比例变化 {difference.AspectPercent:0.0}% · 边缘差 {difference.TrapezoidPercent:0.0}%", type);
@@ -736,6 +738,8 @@ namespace Game.Modules.Editor
             }
         }
 
+        static bool SimulateSceneFacing => mode == ViewMode.GameCamera || (mode == ViewMode.Layout2D && previewFacing);
+
         internal static ProjectionDifference MeasureProjection(PlacementItem item, Camera camera, bool simulateFacing)
         {
             if (item == null || item.art == null || item.art.sprite == null || camera == null)
@@ -743,10 +747,11 @@ namespace Game.Modules.Editor
             Bounds bounds = item.art.sprite.bounds;
             Matrix4x4 matrix = item.art.transform.localToWorldMatrix;
             var facing = item.visualRoot != null ? item.visualRoot.GetComponent<CameraFacingVisual>() : null;
-            if (simulateFacing && facing != null)
+            bool gameFacing = !Application.isPlaying && mode == ViewMode.Free && !simulateFacing;
+            if ((simulateFacing || gameFacing) && facing != null && facing.isActiveAndEnabled)
             {
                 Matrix4x4 visual = Matrix4x4.TRS(item.visualRoot.position,
-                    facing.RotationFor(camera), item.visualRoot.lossyScale);
+                    gameFacing ? facing.GameCameraRotation : facing.RotationFor(camera), item.visualRoot.lossyScale);
                 matrix = visual * Matrix4x4.TRS(item.art.transform.localPosition,
                     item.art.transform.localRotation, item.art.transform.localScale);
             }
@@ -880,21 +885,23 @@ namespace Game.Modules.Editor
         {
             if (camera == null || previewCamera != null)
                 return;
-            bool scenePreview = camera.cameraType == CameraType.SceneView && (previewFacing || mode == ViewMode.GameCamera);
+            bool freePreview = !Application.isPlaying && camera.cameraType == CameraType.SceneView && mode == ViewMode.Free;
+            bool scenePreview = camera.cameraType == CameraType.SceneView && (freePreview || SimulateSceneFacing);
             bool gamePreview = !Application.isPlaying && camera.cameraType == CameraType.Game;
             if (!scenePreview && !gamePreview) return;
             previewCamera = camera;
             try
             {
-                // Render Game and its matching Scene view with the same billboard rule.
+                // Free Scene observes the game's orientation, even from the back of the artwork.
+                // Only explicit layout/game-camera simulation follows the Scene camera itself.
                 // Keep authored rotations untouched outside the render callbacks.
                 var faces = gamePreview
                     ? Object.FindObjectsOfType<CameraFacingVisual>().Where(face => face.isActiveAndEnabled)
-                    : mode == ViewMode.GameCamera ? SceneFacingVisuals() : VisibleFacingVisuals();
+                    : freePreview || mode == ViewMode.GameCamera ? SceneFacingVisuals() : VisibleFacingVisuals();
                 foreach (var facing in faces)
                 {
                     PreviewRotations[facing.transform] = facing.transform.rotation;
-                    facing.transform.rotation = facing.RotationFor(camera);
+                    facing.transform.rotation = freePreview ? facing.GameCameraRotation : facing.RotationFor(camera);
                 }
             }
             catch

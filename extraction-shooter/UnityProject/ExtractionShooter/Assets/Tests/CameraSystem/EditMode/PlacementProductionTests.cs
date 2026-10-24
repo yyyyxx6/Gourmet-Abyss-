@@ -18,6 +18,7 @@ namespace GourmetAbyss.CameraSystem.Tests
         [TestCase("TreeImageCopiesAreIndependent")]
         [TestCase("EditorDungeonCameraWithoutModule")]
         [TestCase("EditorBillboardsMatchGameAndRestore")]
+        [TestCase("FreeSceneBillboardsKeepRuntimeOrientation")]
         [TestCase("PreviewDoesNotCopyGameplayOrChangeSource")]
         [TestCase("StandaloneDepthBeyondRestaurantRange")]
         public void ProductionPlacementContract(string check)
