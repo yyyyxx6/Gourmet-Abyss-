@@ -80,7 +80,8 @@ public class HomeCavecar : MonoBehaviour
         MapUI.SetActive(true);
         
         mapUIRectTransform = MapUI.GetComponent<RectTransform>();
-        mapUICanvasGroup = MapUI.GetComponent<CanvasGroup>() ?? MapUI.AddComponent<CanvasGroup>();
+        mapUICanvasGroup = MapUI.GetComponent<CanvasGroup>();
+        if (mapUICanvasGroup == null) mapUICanvasGroup = MapUI.AddComponent<CanvasGroup>();
         
         originalUIScale = mapUIRectTransform.localScale;
         mapUIRectTransform.localScale = Vector3.zero;
@@ -107,7 +108,9 @@ public class HomeCavecar : MonoBehaviour
         isAnimating = true;
         isUIActive = true;
         MapUI.SetActive(true);
-        UIFloatingButtonGroup.Instance.DeactivateAllItems();
+        // The old bottom navigation is optional; UpGround no longer contains it.
+        var navigation = UIFloatingButtonGroup.Instance;
+        if (navigation != null) navigation.DeactivateAllItems();
         if (currentUITween != null && currentUITween.IsActive())
         {
             currentUITween.Kill();
