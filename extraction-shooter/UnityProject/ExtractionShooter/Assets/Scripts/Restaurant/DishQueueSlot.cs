@@ -40,6 +40,12 @@ public class DishQueueSlot : MonoBehaviour
     [SerializeField] private Sprite normalSlotBackgroundSprite;
     [SerializeField] private Text itemCountText;
     [SerializeField] private bool transparentNormalBackground;
+    [SerializeField] private DishQueueCancelButton cancelButton;
+
+    public void BindCancellation(RestaurantPanel owner, long batchId)
+    {
+        if (cancelButton != null) cancelButton.Bind(owner, batchId);
+    }
 
     /// <summary>多出来的扩容预览格：仅展示锁/Look 图，不参与排队数据。</summary>
     private bool _isLockedPreviewSlot;

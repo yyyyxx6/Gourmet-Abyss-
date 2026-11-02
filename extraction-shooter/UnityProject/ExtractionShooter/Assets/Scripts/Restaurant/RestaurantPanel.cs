@@ -122,14 +122,21 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     private class CookQueueStackEntry
     {
+        public long id;
         public DishRecipe recipe;
-        public int count;
+        public RestaurantIngredientStorage storage;
+        public readonly Queue<RestaurantIngredientStore.Reservation> orders =
+            new Queue<RestaurantIngredientStore.Reservation>();
+        public int count => orders.Count;
         public bool IsEmpty => recipe == null || count <= 0;
-        public void Clear() { recipe = null; count = 0; }
+        public void Clear() { id = 0; recipe = null; storage = null; orders.Clear(); }
     }
 
     private readonly List<CookQueueStackEntry> _cookQueueData = new List<CookQueueStackEntry>();
     private int _lastCookQueueActiveCount = -1;
+    private long _nextCookQueueBatchId = 1;
+    private bool _mutatingCookQueue;
+    private bool _cookQueueStatsDirty;
 
     /// <summary>判断是否同一道菜（用于装盘唯一性、叠堆判定）。</summary>
     public static bool RecipesMatch(DishRecipe a, DishRecipe b)
@@ -287,6 +294,14 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         }
     }
 
+    protected override void OnDestroy()
+    {
+        CancelPendingIngredientOrders();
+        // Disabling/reopening the menu keeps waiting orders; destroying their owner releases them.
+        foreach (var batch in _cookQueueData) RefundWaitingBatch(batch);
+        base.OnDestroy();
+    }
+
     private IEnumerator WaitAndSyncRestaurantUnits()
     {
         // 等待 WeaponStatsManager 单例创建完成
@@ -368,6 +383,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     private void SyncCookQueueSlotsFromStats()
     {
+        if (_mutatingCookQueue) { _cookQueueStatsDirty = true; return; }
         if (allDishQueueSlots == null || allDishQueueSlots.Count == 0)
             return;
 
@@ -401,24 +417,44 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     private void ShrinkCookQueueActiveRegion(int oldActive, int newActive)
     {
-        List<(DishRecipe r, int c)> order = new List<(DishRecipe, int)>();
-        for (int i = 0; i < oldActive && i < _cookQueueData.Count; i++)
+        _mutatingCookQueue = true;
+        try
         {
-            CookQueueStackEntry e = _cookQueueData[i];
-            if (!e.IsEmpty) order.Add((e.recipe, e.count));
+            var occupied = _cookQueueData.FindAll(batch => !batch.IsEmpty);
+            for (int i = newActive; i < occupied.Count; i++) RefundWaitingBatch(occupied[i]);
+            CompactCookQueueLeftPreserveOrder();
         }
+        finally { _mutatingCookQueue = false; }
+    }
 
-        for (int i = 0; i < _cookQueueData.Count; i++)
-            _cookQueueData[i].Clear();
+    private static void RefundWaitingBatch(CookQueueStackEntry batch)
+    {
+        var receipts = batch.orders.ToArray();
+        var storage = batch.storage;
+        batch.Clear();
+        if (storage != null) storage.RefundAll(receipts);
+        else foreach (var receipt in receipts) receipt.Owner.Refund(receipt);
+    }
 
-        if (order.Count > newActive)
-            Debug.LogWarning($"[餐厅] 烹饪排队槽减至 {newActive}，将丢失末尾 {order.Count - newActive} 条队列。");
+    public long GetWaitingBatchId(int slotIndex) => slotIndex >= 0 && slotIndex < GetActiveCookQueueSlotCount() &&
+        slotIndex < _cookQueueData.Count && !_cookQueueData[slotIndex].IsEmpty ? _cookQueueData[slotIndex].id : 0;
 
-        for (int i = 0; i < order.Count && i < newActive; i++)
+    public bool TryCancelWaitingBatch(long batchId)
+    {
+        if (!isActiveAndEnabled || _mutatingCookQueue || batchId <= 0) return false;
+        var batch = _cookQueueData.Find(entry => entry.id == batchId && !entry.IsEmpty);
+        if (batch == null) return false;
+        int cancelledCount = batch.count;
+        _mutatingCookQueue = true;
+        try
         {
-            _cookQueueData[i].recipe = order[i].r;
-            _cookQueueData[i].count = order[i].c;
+            RefundWaitingBatch(batch);
+            CompactCookQueueLeftPreserveOrder();
         }
+        finally { _mutatingCookQueue = false; }
+        TryDispatchQueueToPots();
+        GlobalMessageUI.Show($"已取消 {cancelledCount} 份，食材已退回仓库");
+        return true;
     }
 
     private void RefreshCookQueueUI()
@@ -432,6 +468,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         {
             DishQueueSlot ui = allDishQueueSlots[i];
             if (ui == null) continue;
+            ui.BindCancellation(this, GetWaitingBatchId(i));
 
             // 与背包一致：多出的最后一格为锁定/预览；active 增加后先解锁旧格，再把锁移到新的「第 active 个」下标
             bool isLockPreview = active < slotListCount && i == active;
@@ -464,7 +501,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     /// <summary>点击菜谱：入队（扣食材），再由空闲锅自动开始烹饪。</summary>
     public bool TryEnqueueDishForCooking(DishRecipe recipe)
     {
-        if (!isActiveAndEnabled || recipe == null || recipe.locked) return false;
+        if (!isActiveAndEnabled || _mutatingCookQueue || recipe == null || recipe.locked) return false;
         EnsureCookQueueDataSize();
         if (FindSuitableCookQueueSlotIndex(recipe) < 0) return false;
         RestaurantIngredientStorage storage = RestaurantIngredientStorage.EnsureExists();
@@ -483,6 +520,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     private IEnumerator CoEnqueueDishAfterIngredientFly(DishRecipe recipe, RestaurantIngredientStorage storage,
         RestaurantIngredientStore.Reservation reservation)
     {
+        bool queued = false;
         try
         {
             int index = FindSuitableCookQueueSlotIndex(recipe);
@@ -491,8 +529,9 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
             yield return StartCoroutine(PlayIngredientFlyToQueueCoroutine(sources, index));
             if (!isActiveAndEnabled || !reservation.IsPending) yield break;
             index = FindSuitableCookQueueSlotIndex(recipe);
-            if (index < 0 || !TryCommitRecipeToCookQueueSlot(index, recipe)) yield break;
-            storage.Commit(reservation);
+            if (index < 0 || !TryCommitRecipeToCookQueueSlot(index, recipe, storage, reservation)) yield break;
+            queued = true;
+            pendingIngredientOrders.Remove(reservation);
             RefreshCookQueueUI();
             PulseCookQueueSlotIfValid(index);
             TryDispatchQueueToPots();
@@ -500,7 +539,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         }
         finally
         {
-            if (storage != null) storage.Refund(reservation);
+            if (!queued && storage != null) storage.Refund(reservation);
             pendingIngredientOrders.Remove(reservation);
         }
     }
@@ -585,9 +624,11 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         return RestaurantIngredientStorage.EnsureExists().TryConsumeRecipe(recipe);
     }
 
-    private bool TryCommitRecipeToCookQueueSlot(int idx, DishRecipe recipe)
+    private bool TryCommitRecipeToCookQueueSlot(int idx, DishRecipe recipe, RestaurantIngredientStorage storage,
+        RestaurantIngredientStore.Reservation reservation)
     {
-        if (recipe == null || idx < 0 || idx >= _cookQueueData.Count)
+        if (_mutatingCookQueue || recipe == null || storage == null || reservation == null || !reservation.IsPending ||
+            idx < 0 || idx >= _cookQueueData.Count || idx >= GetActiveCookQueueSlotCount())
             return false;
 
         int maxPer = GetCookQueueMaxPerSlot();
@@ -595,14 +636,16 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         if (e.IsEmpty)
         {
             e.recipe = recipe;
-            e.count = 1;
+            e.id = _nextCookQueueBatchId++;
+            e.storage = storage;
+            e.orders.Enqueue(reservation);
             return true;
         }
 
-        if (!RecipesMatch(e.recipe, recipe) || e.count >= maxPer)
+        if (!RecipesMatch(e.recipe, recipe) || e.count >= maxPer || e.storage != storage)
             return false;
 
-        e.count++;
+        e.orders.Enqueue(reservation);
         return true;
     }
 
@@ -856,14 +899,15 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     /// </summary>
     private void TryDispatchQueueToPots()
     {
-        if (!isActiveAndEnabled || potsList == null || potsList.Count == 0) return;
-
-        int maxDispatch = Mathf.Max(potsList.Count, GetActiveCookQueueSlotCount());
-        for (int i = 0; i < maxDispatch; i++)
+        if (_mutatingCookQueue || !isActiveAndEnabled || potsList == null || potsList.Count == 0) return;
+        _mutatingCookQueue = true;
+        try
         {
-            if (!TryDispatchOneCookFromQueueFront())
-                break;
+            int maxDispatch = Mathf.Max(potsList.Count, GetActiveCookQueueSlotCount());
+            for (int i = 0; i < maxDispatch; i++)
+                if (!TryDispatchOneCookFromQueueFront()) break;
         }
+        finally { _mutatingCookQueue = false; }
     }
 
     /// <summary>从排队槽下标 0 取 1 份菜；<see cref="potsList"/> 中任一空闲且接受该菜谱的锅开始烹饪。</summary>
@@ -881,6 +925,9 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
         DishRecipe r = _cookQueueData[0].recipe;
         if (r == null) return false;
+        var batch = _cookQueueData[0];
+        var receipt = batch.orders.Peek();
+        if (!receipt.IsPending || batch.storage == null) return false;
 
         Pot pot = FindAvailablePotForRecipe(r.acceptablePot);
         if (pot == null)
@@ -892,10 +939,11 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         if (!pot.StartCooking(r))
             return false;
 
-        _cookQueueData[0].count--;
-        if (_cookQueueData[0].count <= 0)
+        batch.storage.Commit(receipt);
+        batch.orders.Dequeue();
+        if (batch.IsEmpty)
         {
-            _cookQueueData[0].Clear();
+            batch.Clear();
             CompactCookQueueLeftPreserveOrder();
         }
         else
@@ -907,23 +955,10 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     /// <summary>队列槽 0 卖空概念：与餐碟一致，非空槽整体左移。</summary>
     private void CompactCookQueueLeftPreserveOrder()
     {
-        int active = GetActiveCookQueueSlotCount();
         EnsureCookQueueDataSize();
-        List<(DishRecipe r, int c)> filled = new List<(DishRecipe, int)>();
-        for (int i = 0; i < active && i < _cookQueueData.Count; i++)
-        {
-            CookQueueStackEntry e = _cookQueueData[i];
-            if (!e.IsEmpty) filled.Add((e.recipe, e.count));
-        }
-
-        for (int i = 0; i < active && i < _cookQueueData.Count; i++)
-            _cookQueueData[i].Clear();
-
-        for (int i = 0; i < filled.Count && i < active; i++)
-        {
-            _cookQueueData[i].recipe = filled[i].r;
-            _cookQueueData[i].count = filled[i].c;
-        }
+        var filled = _cookQueueData.FindAll(batch => !batch.IsEmpty);
+        for (int i = 0; i < _cookQueueData.Count; i++)
+            _cookQueueData[i] = i < filled.Count ? filled[i] : new CookQueueStackEntry();
 
         RefreshCookQueueUI();
     }
@@ -939,6 +974,11 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     private void Update()
     {
+        if (_cookQueueStatsDirty && !_mutatingCookQueue)
+        {
+            _cookQueueStatsDirty = false;
+            SyncCookQueueSlotsFromStats();
+        }
         if (ingredientStockUiDirty)
         {
             ingredientStockUiDirty = false;

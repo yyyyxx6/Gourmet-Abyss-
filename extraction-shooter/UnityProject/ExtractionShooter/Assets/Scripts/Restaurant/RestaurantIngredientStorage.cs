@@ -70,6 +70,16 @@ public sealed class RestaurantIngredientStorage : PersistentMonoSingleton<Restau
         return true;
     }
 
+    public int RefundAll(IEnumerable<RestaurantIngredientStore.Reservation> reservations)
+    {
+        int refunded = 0;
+        foreach (var reservation in reservations)
+            if (Store.Refund(reservation)) refunded++;
+        // Publish the whole cancelled batch before UI listeners observe the available balance.
+        if (refunded > 0) NotifyChanged();
+        return refunded;
+    }
+
     public bool TryConsumeRecipe(DishRecipe recipe)
     {
         RestaurantIngredientStore.Reservation reservation;
