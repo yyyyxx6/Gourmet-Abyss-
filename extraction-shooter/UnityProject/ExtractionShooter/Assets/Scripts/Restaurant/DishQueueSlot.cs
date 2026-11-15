@@ -47,6 +47,36 @@ public class DishQueueSlot : MonoBehaviour
         if (cancelButton != null) cancelButton.Bind(owner, batchId);
     }
 
+    public void ConfigureCookingBar(Sprite background)
+    {
+        transparentNormalBackground = false;
+        normalSlotBackgroundSprite = _cachedNormalBgSprite = background;
+        if (slotBackground != null)
+        {
+            slotBackground.sprite = background;
+            slotBackground.color = Color.white;
+            slotBackground.raycastTarget = false;
+        }
+        if (itemCountText != null)
+        {
+            itemCountText.color = new Color32(255, 247, 220, 255);
+            itemCountText.resizeTextForBestFit = true;
+            itemCountText.resizeTextMinSize = 20;
+            itemCountText.resizeTextMaxSize = 28;
+            // Old stacked outlines covered most of each digit. Keep one thin high-contrast edge.
+            foreach (var shadow in itemCountText.GetComponents<Shadow>()) shadow.enabled = false;
+            var outline = itemCountText.GetComponent<Outline>();
+            if (outline == null) outline = itemCountText.gameObject.AddComponent<Outline>();
+            outline.enabled = true;
+            outline.effectColor = new Color32(63, 34, 12, 255);
+            outline.effectDistance = new Vector2(1.2f, -1.2f);
+            var rect = itemCountText.rectTransform;
+            rect.anchoredPosition = new Vector2(31, -29);
+            rect.sizeDelta = new Vector2(50, 42);
+        }
+        SetLockedPreviewSlot(false);
+    }
+
     /// <summary>多出来的扩容预览格：仅展示锁/Look 图，不参与排队数据。</summary>
     private bool _isLockedPreviewSlot;
     private Sprite _cachedNormalBgSprite;

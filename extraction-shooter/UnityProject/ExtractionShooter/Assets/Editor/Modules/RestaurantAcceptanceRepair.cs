@@ -97,11 +97,24 @@ namespace Game.Modules.Editor
                 hud.texts = hud.texts.Where(x => x.id != "money").ToArray();
                 var queue = hud.GetRegion("cooking-queue");
                 var image = queue.GetComponent<Image>();
-                image.raycastTarget = true;
-                var button = queue.GetComponent<Button>();
-                if (button == null) button = queue.gameObject.AddComponent<Button>();
-                button.targetGraphic = image;
-                button.transition = Selectable.Transition.None;
+                var status = root.GetComponentInChildren<RestaurantCookingStatusUI>(true);
+                Button button;
+                if (status != null && status.cookButton != null)
+                {
+                    image.raycastTarget = false;
+                    image.enabled = false;
+                    var wholeQueueButton = queue.GetComponent<Button>();
+                    if (wholeQueueButton != null) Object.DestroyImmediate(wholeQueueButton);
+                    button = status.cookButton.GetComponent<Button>();
+                }
+                else
+                {
+                    image.raycastTarget = true;
+                    button = queue.GetComponent<Button>();
+                    if (button == null) button = queue.gameObject.AddComponent<Button>();
+                    button.targetGraphic = image;
+                    button.transition = Selectable.Transition.None;
+                }
                 var actions = hud.actions.Where(x => x.id != "cooking").ToList();
                 actions.Add(new ModuleHUD.ActionButton { id = "cooking", button = button });
                 hud.actions = actions.ToArray();

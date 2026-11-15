@@ -41,6 +41,8 @@ public sealed class RestaurantModuleAdapter : MonoBehaviour, IQueueIngredientPre
         Connect("decoration", Decoration);
         Connect("recipes", Recipes);
         Connect("cooking", OpenRecipes);
+        var cookingStatus = pair.hud.GetComponentInChildren<RestaurantCookingStatusUI>(true);
+        if (cookingStatus != null) cookingStatus.Bind(restaurant);
         if(decorationPopup!=null)decorationPopup.Closed+=OnDecorationClosed;
         var management = pair.hud.GetAction("management");
         if (management != null)
@@ -84,11 +86,9 @@ public sealed class RestaurantModuleAdapter : MonoBehaviour, IQueueIngredientPre
         }
         if(runtimeDebug==null)runtimeDebug=FindObjectOfType<RunIngredientDebugUI>(true);
         if(runtimeDebug!=null&&pair.presentation!=null)pair.presentation.RegisterSuspended(runtimeDebug.GetComponent<Canvas>());
-        var money=pair.hud.GetText("money");var progress=pair.hud.GetImage("progress");
+        var money=pair.hud.GetText("money");
         if (money != null && GameValManager.Instance != null)
             money.text = GameValManager.Instance.GetResourceCount(ResourceType.Money).ToString();
-        if (progress != null && restaurant != null && restaurant.cookingProgressImage != null)
-            progress.fillAmount = restaurant.cookingProgressImage.fillAmount;
     }
     private void Exit() { entry.LeaveRestaurant(); }
     private void Decoration()

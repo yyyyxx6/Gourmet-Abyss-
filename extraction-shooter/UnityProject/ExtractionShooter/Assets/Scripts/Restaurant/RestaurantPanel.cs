@@ -137,6 +137,8 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
     private long _nextCookQueueBatchId = 1;
     private bool _mutatingCookQueue;
     private bool _cookQueueStatsDirty;
+    public bool ShowLockedQueuePreview { get; set; } = true;
+    public int WaitingSlotCapacity => GetActiveCookQueueSlotCount();
 
     /// <summary>判断是否同一道菜（用于装盘唯一性、叠堆判定）。</summary>
     public static bool RecipesMatch(DishRecipe a, DishRecipe b)
@@ -405,7 +407,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
             DishQueueSlot slot = allDishQueueSlots[i];
             if (slot == null) continue;
 
-            bool showExtraLookEmpty = (i == newActive) && allDishQueueSlots.Count > newActive;
+            bool showExtraLookEmpty = ShowLockedQueuePreview && (i == newActive) && allDishQueueSlots.Count > newActive;
             bool on = (i < newActive) || showExtraLookEmpty;
 
             if (slot.gameObject.activeSelf != on)
@@ -471,7 +473,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
             ui.BindCancellation(this, GetWaitingBatchId(i));
 
             // 与背包一致：多出的最后一格为锁定/预览；active 增加后先解锁旧格，再把锁移到新的「第 active 个」下标
-            bool isLockPreview = active < slotListCount && i == active;
+            bool isLockPreview = ShowLockedQueuePreview && active < slotListCount && i == active;
 
             if (isLockPreview)
             {
@@ -968,7 +970,6 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         TryDispatchQueueToPots();
     }
 
-    private int _dispatchFrameCounter;
     private Coroutine _forceScrollResetCoroutine;
     private int _lastRefreshOnOpenFrame = -1;
 
@@ -987,7 +988,6 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
         }
         HandleDishMenuScrollWheel();
 
-        if ((_dispatchFrameCounter++ % 12) != 0) return;
         TryDispatchQueueToPots();
     }
 
@@ -1668,7 +1668,7 @@ public class RestaurantPanel : MonoSingleton<RestaurantPanel>
 
     /// <summary>
     /// 出锅装盘：优先填满已装着同菜的碟子（剩余容量最少的最优先；并列时取更靠前的碟子），否则取最靠前的空碟（可在多盘上堆同一种菜）。
-    /// 仅用于「当前碟子数据」下的选址；真正加菜在飞行落点之后由 <see cref="Pot"/> 调用 <see cref="Plate.TryAddDish"/>。
+    /// 仅用于「当前碟子数据」下的选址；成品由 <see cref="Pot"/> 调用 <see cref="Plate.TryAddDish"/> 提交，飞行动画独立播放。
     /// </summary>
     public Plate FindSuitablePlateForOutgoingRecipe(DishRecipe recipe)
     {
